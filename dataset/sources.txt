@@ -1,0 +1,58 @@
+vehicle dataset- first tried SIAM (scociet of Indian automobile manufacturers)
+INR 48,500+ GST (Indian Subscribers) & USD 1,500 (Foreign Subscribers) - Per Annum (Apr-March) 
+paid so left 
+
+then tried federation of automotive dealers(FADA)but website closed 
+then tried Trading economic but it is paid
+then tried https://datasource.kapsarc.org/explore/dataset/india-vehicle-sales-trends but data available only till 2022
+then tried data.gov.in but last updated in 2019
+then tried https://dataful.in/datasets/18262/ but is paid
+then tried https://ckandev.indiadataportal.com/ but data is available only of JAN month so can't do monthwise analysis
+finally used govenment data from https://analytics.parivahan.gov.in/analytics/vahanpublicreport?lang=en 
+three datasets from 2023 to 2025 sorted by fuel,vehicle_category, vehicle_class
+
+
+
+for the fuel price the dataset is from government international prices of crude oil,Indian basket
+https://ppac.gov.in/prices/international-prices-of-crude-oil
+
+for the holidays it was difficult to classify a holiday and Government recognized only few holidays as natinoal with no dataset or API
+so used holidays python library to generate the dataset
+
+for the interest rates the dataset used was Interest Rates: Long-Term Government Bond Yields: 10-Year: Main (Including Benchmark) for India (INDIRLTLT01STM)
+https://fred.stlouisfed.org/series/INDIRLTLT01STM
+
+for the policies and repo rate data with these fields fame_ii,fame_iii,pm_edrive,bs7_norms,bharat_ncap,scrappage_policy,pli_scheme,repo_rate_cut_2025,repo_rate
+the flags were generated using an automated python script
+
+ran this sciprt to combine sales data from fuel,vehicle_category and vehicle_class fieldshellgamerhell@Kushagras-Air dataset % python3 join_datasets.py
+Reading and preprocessing datasets...
+Joining datasets...
+Extracting year and month components...
+Saving joined data to /Users/hellgamerhell/Downloads/salesforce/dataset/joined_data.csv...
+Data processing complete. Shape of the joined data: (36, 129)
+Columns in the joined data: 129
+
+for the interest rate, policies, and holidays the following script was run to generate the combined_data.csv fieldshellgamerhell@Kushagras-Air dataset % python3 combine_datasets.py 
+Processing Interest Rates data...
+Processing Holidays data...
+Processing Auto Policies data...
+Joining datasets...
+Saving combined data to /Users/hellgamerhell/Downloads/salesforce/dataset/combined_data.csv...
+Data processing complete. Shape of the combined data: (36, 16)
+Columns in the combined data: ['year', 'month', 'month_name', 'interest_rate', 'holiday_count',
+ 'major_religious_holiday', 'major_national_holiday', 'fame_ii', 'fame_iii', 'pm_edrive', 'bs7_norms', 
+ 'bharat_ncap', 'scrappage_policy', 'pli_scheme', 'repo_rate_cut_2025', 'repo_rate']
+
+ the final merged dataset was generated from this python script and saved to final_merged_dataset.csv
+ Loading datasets...
+Joined data shape: (36, 129)
+Combined data shape: (36, 16)
+Merging datasets based on year and month...
+Joined data rows: 36
+Combined data rows: 36
+Merged data rows: 36
+Saving merged dataset...
+Final merged dataset shape: (36, 143)
+Datasets successfully merged and saved to /Users/hellgamerhell/Downloads
+/salesforce/dataset/final_merged_dataset.csv
