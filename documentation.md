@@ -191,6 +191,66 @@ If you encounter issues with pmdarima:
 pip install --upgrade --force-reinstall pmdarima==1.8.5 numpy==1.20.3
 ```
 
+## Flask API Server
+
+A REST API server has been created to serve the forecasting model outputs. The API provides JSON endpoints for accessing predictions, metrics, and model comparisons.
+
+### API Endpoints
+
+- **GET** `/health` - Health check
+- **GET** `/api/v1/predictions` - All model predictions with actual values
+- **GET** `/api/v1/metrics` - Model performance metrics (MAE, RMSE, MAPE)
+- **GET** `/api/v1/models` - Information about available models
+- **GET** `/api/v1/forecast/{model_name}` - Specific model forecast (ARIMA, ETS, SARIMAX)
+- **GET** `/api/v1/comparison` - Model comparison and rankings
+
+### Setting up the API Server
+
+#### Option 1: Automated Setup (Windows)
+```powershell
+# Run the PowerShell setup script
+.\setup_api.ps1
+```
+
+#### Option 2: Manual Setup
+```bash
+# Install API dependencies
+pip install -r requirements_api.txt
+
+# Ensure forecast data exists (run if needed)
+cd Code
+python main_pipeline.py
+
+# Start the API server
+python app.py
+```
+
+The API server runs on `http://localhost:5000` with CORS support enabled.
+
+### Testing the API
+
+Use the provided demo script to test all endpoints:
+```bash
+cd Code
+python api_demo.py
+```
+
+Or test individual endpoints with curl:
+```bash
+# Health check
+curl http://localhost:5000/health
+
+# Get all predictions
+curl http://localhost:5000/api/v1/predictions
+
+# Get SARIMAX forecast
+curl http://localhost:5000/api/v1/forecast/SARIMAX
+```
+
+### API Documentation
+
+Detailed API documentation with request/response examples is available in `API_Documentation.md`.
+
 ## Next Steps
 
 To improve the forecasting system:
@@ -198,3 +258,5 @@ To improve the forecasting system:
 2. Implement ensemble methods combining multiple model predictions
 3. Create interactive dashboards using Plotly or Dash
 4. Add more advanced models like Prophet or LSTM neural networks
+5. Enhance the API with authentication and rate limiting for production use
+6. Add real-time data ingestion capabilities
