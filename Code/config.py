@@ -17,6 +17,7 @@ TARGET = 'fuel_Total'                      # Primary forecasting target
 DATE_COL = 'Month'                         # Monthly date column name
 TEST_MONTHS = 6                            # Holdout months for testing
 RANDOM_SEED = 42                           # Random seed for reproducibility
+FUTURE_FORECAST_DATE = "2026-01-01"        # Date until which to forecast future values
 
 # Set random seed
 np.random.seed(RANDOM_SEED)
@@ -28,7 +29,14 @@ CANDIDATE_EXOGS = [
     'major_national_holiday', 'major_religious_holiday',
     'fuel_DIESEL', 'fuel_PETROL', 'fuel_PURE EV', 'fuel_PLUG IN HYBRID EV',
     'fame_ii', 'fame_iii', 'pm_edrive', 'bs7_norms', 
-    'scrappage_policy', 'pli_scheme'
+    'scrappage_policy', 'pli_scheme',
+    "GasPrices", 
+    "UnemploymentRate", 
+    "ConsumerConfidence", 
+    "InterestRates", 
+    "AdvertisingSpend", 
+    "CompetitorSales", 
+    "SeasonalIndex"
 ]
 
 # Number of top correlated exogenous variables to select
@@ -42,11 +50,11 @@ ARIMA_PARAMS = {
     'stepwise': True,
     'suppress_warnings': True,
     'error_action': 'ignore',
-    'trace': True,
-    'max_p': 5,
-    'max_q': 5,
-    'max_P': 2,
-    'max_Q': 2
+    'trace': False,
+    'max_p': 8,
+    'max_q': 8,
+    'max_P': 3,
+    'max_Q': 3
 }
 
 # Exponential Smoothing parameters
@@ -60,7 +68,7 @@ ETS_PARAMS = {
 SARIMAX_PARAMS = {
     'enforce_stationarity': False,
     'enforce_invertibility': False,
-    'max_iter': 200  # Changed from 'maxiter' to 'max_iter' to match statsmodels API
+    'max_iter': 500
 }
 
 # ------------------------- Segment Analysis Configuration -------------------------
