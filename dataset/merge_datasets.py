@@ -3,7 +3,7 @@ import os
 
 def merge_datasets():
     # File paths
-    base_dir = '/Users/hellgamerhell/Downloads/salesforce/dataset/'
+    base_dir = '/home/alookaladdoo/Salesforce-Compass/dataset/'
     joined_data_path = os.path.join(base_dir, 'joined_data.csv')
     combined_data_path = os.path.join(base_dir, 'combined_data.csv')
     output_path = os.path.join(base_dir, 'final_merged_dataset.csv')

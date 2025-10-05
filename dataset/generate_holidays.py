@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import datetime
 
 # Initialize Indian holidays for 2023-2025
-india_holidays = holidays.India(years=range(2023, 2026))  # range(2023, 2026) gives 2023, 2024, 2025
+india_holidays = holidays.India(years=range(2005, 2026))  # range(2023, 2026) gives 2023, 2024, 2025
 
 # Convert to DataFrame and extract month/year
 holiday_list = []
@@ -23,7 +23,7 @@ df['Date'] = pd.to_datetime(df['Date'])  # Convert to datetime for proper sortin
 df = df.sort_values('Date')  # Sort chronologically
 df['Date'] = df['Date'].dt.strftime('%Y-%m-%d')  # Convert back to string format
 
-df.to_csv("india_holidays_2023_2025.csv", index=False)
+df.to_csv("india_holidays_2005_2024.csv", index=False)
 
 print("CSV generated successfully!")
 print(f"Total holidays generated: {len(df)}")

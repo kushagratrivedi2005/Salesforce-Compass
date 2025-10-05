@@ -2,7 +2,7 @@ import pandas as pd
 import os
 
 # Define file paths
-data_dir = '/Users/hellgamerhell/Downloads/salesforce/dataset'
+data_dir = '/home/alookaladdoo/Salesforce-Compass/dataset/'
 fuel_file = os.path.join(data_dir, 'fuel.csv')
 vehicle_class_file = os.path.join(data_dir, 'vehicle_class.csv')
 vehicle_category_file = os.path.join(data_dir, 'vehicle_category.csv')
