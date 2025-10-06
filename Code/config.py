@@ -10,36 +10,32 @@ import numpy as np
 # ------------------------- File Paths -------------------------
 CSV_PATH = 'final_merged_dataset.csv'      # Path to merged dataset
 RESULTS_DIR = 'forecast_results'           # Directory to save outputs
-DATASET_DIR = '/Users/hellgamerhell/Downloads/salesforce/dataset'
+DATASET_DIR = '/Users/hellgamerhell/Downloads/salesforce/Salesforce-Compass/dataset'
 
 # ------------------------- Model Configuration -------------------------
-TARGET = 'fuel_Total'                      # Primary forecasting target
+TARGET = 'category_LIGHT PASSENGER VEHICLE'                      # Primary forecasting target
 DATE_COL = 'Month'                         # Monthly date column name
 TEST_MONTHS = 6                            # Holdout months for testing
 RANDOM_SEED = 42                           # Random seed for reproducibility
-FUTURE_FORECAST_DATE = "2026-01-01"        # Date until which to forecast future values
+FUTURE_FORECAST_MONTHS = 12                # Number of months to forecast into the future
 
 # Set random seed
 np.random.seed(RANDOM_SEED)
 
 # ------------------------- Exogenous Variables Configuration -------------------------
-# Candidate exogenous features for causal modeling
+# Set to True to use top-k correlated variables, False to use MANUAL_EXOGS
+USE_TOP_K_EXOGS = True
+
+# Candidate exogenous features for causal modeling (used if USE_TOP_K_EXOGS is True)
 CANDIDATE_EXOGS = [
     'interest_rate', 'repo_rate', 'holiday_count', 
     'major_national_holiday', 'major_religious_holiday',
-    'fuel_DIESEL', 'fuel_PETROL', 'fuel_PURE EV', 'fuel_PLUG IN HYBRID EV',
-    'fame_ii', 'fame_iii', 'pm_edrive', 'bs7_norms', 
-    'scrappage_policy', 'pli_scheme',
-    "GasPrices", 
-    "UnemploymentRate", 
-    "ConsumerConfidence", 
-    "InterestRates", 
-    "AdvertisingSpend", 
-    "CompetitorSales", 
-    "SeasonalIndex"
 ]
 
-# Number of top correlated exogenous variables to select
+# Manual list of exogenous variables (used if USE_TOP_K_EXOGS is False)
+MANUAL_EXOGS = ['interest_rate', 'repo_rate']
+
+# Number of top correlated exogenous variables to select (if USE_TOP_K_EXOGS is True)
 TOP_K_EXOGS = 5
 
 # ------------------------- Model Parameters -------------------------

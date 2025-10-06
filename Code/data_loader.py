@@ -100,32 +100,18 @@ def load_and_prepare(csv_path):
         print("Warning: Found duplicate dates. Aggregating by sum.")
         df = df.groupby(df.index).sum()
     
-    # Get the actual data range (without missing months in between)
+    # Get the actual data range
     min_date = df.index.min()
+    max_date = df.index.max()
     
-    # Find the last date with actual meaningful data (not just date and month names)
-    # Check for non-NaN values in numeric columns that matter for analysis
-    numeric_cols_to_check = [col for col in numeric_columns if col.startswith('fuel_') or 
-                          col.startswith('class_') or col.startswith('category_')]
-    if numeric_cols_to_check:
-        # A row has meaningful data if at least one important column has a value
-        has_data = df[numeric_cols_to_check].notna().any(axis=1)
-        valid_rows = df[has_data]
-        if not valid_rows.empty:
-            max_date = valid_rows.index.max()
-        else:
-            max_date = df.index.max()
-    else:
-        max_date = df.index.max()
-    
-    print(f"Detected actual data range with meaningful values: {min_date.strftime('%Y-%m')} to {max_date.strftime('%Y-%m')}")
-    
-    # Limit data to no later than July 2025 as specified
-    cutoff_date = pd.Timestamp('2025-07-01')
+    # Apply cutoff date limit (August 2025)
+    cutoff_date = pd.Timestamp('2025-09-01')
     if max_date > cutoff_date:
-        print(f"Limiting dataset to end at {cutoff_date.strftime('%Y-%m')} as specified")
+        print(f"Limiting data to cutoff date: {cutoff_date.strftime('%Y-%m')}")
         df = df.loc[:cutoff_date]
         max_date = cutoff_date
+    
+    print(f"✓ Detected actual data range: {min_date.strftime('%Y-%m')} to {max_date.strftime('%Y-%m')}")
     
     # Check for truly empty cells that should be considered NaN
     empty_cells = (df == '') | (df.astype(str) == 'nan')
@@ -233,7 +219,7 @@ def train_test_split_ts(data, test_months=TEST_MONTHS):
         raise ValueError('Input must be pandas Series or DataFrame')
 
 
-def train_test_split_by_date(data, train_end_date='2025-01-01', test_end_date='2025-07-01'):
+def train_test_split_by_date(data, train_end_date='2025-01-01', test_end_date='2025-09-01'):
     """
     Split time series data into train/test by specific dates.
     
@@ -325,6 +311,48 @@ def prepare_exogenous_variables(df, candidate_exogs, target_col, top_k=5):
     print(f"Selected top {len(top_exogs)} exogenous variables: {top_exogs}")
 
     return top_exogs, exog_df[top_exogs], corrs_series
+
+
+def detect_and_handle_outliers(series, method='iqr', replace_with='median'):
+    """
+    Detect and handle outliers in time series data.
+    
+    Args:
+        series (pd.Series): Input time series
+        method (str): Method for outlier detection ('iqr' or 'zscore')
+        replace_with (str): How to replace outliers ('median', 'mean', or 'interpolate')
+        
+    Returns:
+        pd.Series: Series with outliers handled
+    """
+    series_clean = series.copy()
+    
+    if method == 'iqr':
+        Q1 = series.quantile(0.25)
+        Q3 = series.quantile(0.75)
+        IQR = Q3 - Q1
+        lower_bound = Q1 - 3 * IQR
+        upper_bound = Q3 + 3 * IQR
+        outliers = (series < lower_bound) | (series > upper_bound)
+    elif method == 'zscore':
+        z_scores = np.abs((series - series.mean()) / series.std())
+        outliers = z_scores > 3
+    else:
+        return series
+    
+    n_outliers = outliers.sum()
+    if n_outliers > 0:
+        print(f"[INFO] Detected {n_outliers} outliers ({n_outliers/len(series)*100:.2f}%)")
+        
+        if replace_with == 'median':
+            series_clean[outliers] = series.median()
+        elif replace_with == 'mean':
+            series_clean[outliers] = series.mean()
+        elif replace_with == 'interpolate':
+            series_clean[outliers] = np.nan
+            series_clean = series_clean.interpolate(method='linear')
+    
+    return series_clean
 
 
 

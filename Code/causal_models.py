@@ -1,9 +1,5 @@
 """
 Causal forecasting models with exogenous variables for vehicle sales prediction.
-
-This module implements:
-- SARIMAX model with safer order selection and exogenous preprocessing
-- Robust data cleaning, frequency enforcement, and diagnostics
 """
 
 import numpy as np
@@ -12,183 +8,135 @@ import traceback
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 from model_utils import compute_metrics, extract_model_parameters
 import warnings
-warnings.filterwarnings("ignore", message="'force_all_finite'")  # sklearn warning suppression
-
-# Default SARIMAX params used only for model creation (not fit kwargs)
-SARIMAX_DEFAULTS = {
-    "enforce_stationarity": False,
-    "enforce_invertibility": False,
-}
-
-# Fit-time kwargs (passed explicitly to .fit())
-SARIMAX_FIT_KWARGS = {
-    "maxiter": 200,  # will be passed as maxiter to .fit()
-    "disp": False
-}
+warnings.filterwarnings("ignore")
 
 
 class SARIMAXModel:
+    """SARIMAX model with exogenous variables."""
+    
     def __init__(self, order=None, seasonal_order=None):
         self.order = order
         self.seasonal_order = seasonal_order
-        self.model = None
         self.fitted_model = None
         self.fitted = False
         self.exog_names = None
 
-    def _ensure_monthly_freq(self, series_or_df):
-        """Ensure MS frequency on index (in-place safe)."""
-        if not isinstance(series_or_df.index, pd.DatetimeIndex):
-            raise ValueError("Index must be a pandas DatetimeIndex")
-        if series_or_df.index.freq is None:
-            # try to infer; if fails set to MS
-            inferred = pd.infer_freq(series_or_df.index)
-            if inferred is None:
-                print("[DEBUG] No inferred freq — forcing MS (month start)")
-                series_or_df = series_or_df.asfreq("MS")
-            else:
-                series_or_df = series_or_df.asfreq(inferred)
-        return series_or_df
+    def _ensure_freq(self, data):
+        """Ensure monthly frequency."""
+        if not isinstance(data.index, pd.DatetimeIndex):
+            raise ValueError("Index must be DatetimeIndex")
+        if data.index.freq is None:
+            data = data.asfreq("MS")
+        return data
 
     def fit(self, train_data, exog_data=None, order=None, seasonal_order=None):
-        # override if provided
-        if order is not None:
+        """Fit SARIMAX model."""
+        if order:
             self.order = order
-        if seasonal_order is not None:
+        if seasonal_order:
             self.seasonal_order = seasonal_order
+        if not self.order:
+            raise ValueError("ARIMA order required")
 
-        # basic validation
-        if self.order is None:
-            raise ValueError("ARIMA order (p,d,q) must be provided")
-
-        # ensure datetime freq
-        train_data = self._ensure_monthly_freq(train_data)
+        train_data = self._ensure_freq(train_data)
         if exog_data is not None:
-            exog_data = exog_data.copy()
-            exog_data = self._ensure_monthly_freq(exog_data)
+            exog_data = self._ensure_freq(exog_data.copy())
+            self.exog_names = list(exog_data.columns)
 
-        # store exog names
-        self.exog_names = list(exog_data.columns) if exog_data is not None else []
-
-        print(f"[DEBUG] Fitting SARIMAX(order={self.order}, seasonal_order={self.seasonal_order})")
-        print(f"[DEBUG] Train length: {len(train_data)}, exog columns: {self.exog_names}")
-
-        # build model using only safe kwargs
         try:
-            self.model = SARIMAX(
+            model = SARIMAX(
                 endog=train_data,
-                exog=exog_data if exog_data is not None else None,
+                exog=exog_data,
                 order=self.order,
                 seasonal_order=self.seasonal_order,
-                **SARIMAX_DEFAULTS
+                enforce_stationarity=False,
+                enforce_invertibility=False
             )
-
-            # fit using explicit kwargs (avoid passing unknown fit kwargs into SARIMAX constructor)
-            self.fitted_model = self.model.fit(**SARIMAX_FIT_KWARGS)
+            self.fitted_model = model.fit(maxiter=100, disp=False, method='lbfgs')
             self.fitted = True
-            print("[DEBUG] SARIMAX model fitted successfully")
         except Exception as e:
-            print("[ERROR] SARIMAX fitting failed:")
-            traceback.print_exc()
-            raise e
-
+            print(f"[ERROR] SARIMAX fitting failed: {e}")
+            raise
         return self
 
     def predict(self, n_periods, exog_data=None, return_conf_int=True):
+        """Generate predictions."""
         if not self.fitted:
-            raise ValueError("Model must be fitted before prediction")
+            raise ValueError("Model not fitted")
 
-        # ensure lengths / index
         if exog_data is not None:
             if len(exog_data) != n_periods:
-                raise ValueError(f"exog_data length ({len(exog_data)}) != n_periods ({n_periods})")
-            exog_data = self._ensure_monthly_freq(exog_data)
+                raise ValueError(f"exog_data length mismatch")
+            exog_data = self._ensure_freq(exog_data)
 
-        # forecast
         forecast_obj = self.fitted_model.get_forecast(steps=n_periods, exog=exog_data)
         preds = forecast_obj.predicted_mean
+        
         if return_conf_int:
-            conf = forecast_obj.conf_int()
-            return preds, conf
-        else:
-            return preds
+            return preds, forecast_obj.conf_int()
+        return preds
 
     def get_model_summary(self):
+        """Get model summary."""
         if not self.fitted:
             return {"status": "not_fitted"}
+        
         summary = {
             "order": self.order,
             "seasonal_order": self.seasonal_order,
             "exog_variables": self.exog_names,
-            "aic": getattr(self.fitted_model, "aic", None),
-            "bic": getattr(self.fitted_model, "bic", None),
-            "log_likelihood": getattr(self.fitted_model, "llf", None),
-            "fitted": True,
+            "aic": self.fitted_model.aic,
+            "bic": self.fitted_model.bic,
+            "fitted": True
         }
+        
         if self.exog_names:
             try:
                 exog_params = extract_model_parameters(self.fitted_model, self.exog_names)
                 summary["exog_coefficients"] = exog_params.to_dict()
-            except Exception:
-                summary["exog_coefficients"] = None
+            except:
+                pass
         return summary
-
-    def get_diagnostics(self):
-        if not self.fitted:
-            return {"status": "not_fitted"}
-        res = self.fitted_model.resid
-        return {
-            "residuals_mean": float(res.mean()),
-            "residuals_std": float(res.std()),
-            # leave placeholders for advanced tests
-            "ljung_box_pvalue": None,
-            "jarque_bera_pvalue": None
-        }
 
 
 def _clean_and_align_exog(exog_train, exog_test, target_index):
-    """
-    - Drops all-NaN and constant columns
-    - Replaces infs, interpolates and fills remaining NaNs
-    - Aligns indexes to target_index and ensures same columns between train/test
-    """
+    """Clean and align exogenous variables."""
     exog_train = exog_train.copy()
     exog_test = exog_test.copy()
 
-    # replace infs
+    # Replace infinities
     exog_train.replace([np.inf, -np.inf], np.nan, inplace=True)
     exog_test.replace([np.inf, -np.inf], np.nan, inplace=True)
 
-    # drop all-NaN columns (based on train)
+    # Drop all-NaN and constant columns
     allnan_cols = [c for c in exog_train.columns if exog_train[c].isna().all()]
-    if allnan_cols:
-        print(f"[DEBUG] Dropping all-NaN exog columns (train): {allnan_cols}")
-        exog_train.drop(columns=allnan_cols, inplace=True)
-        exog_test.drop(columns=allnan_cols, inplace=True, errors='ignore')
-
-    # drop constant columns (train-based)
     const_cols = [c for c in exog_train.columns if exog_train[c].nunique(dropna=True) <= 1]
-    if const_cols:
-        print(f"[DEBUG] Dropping constant exog columns (train): {const_cols}")
-        exog_train.drop(columns=const_cols, inplace=True)
-        exog_test.drop(columns=const_cols, inplace=True, errors='ignore')
+    drop_cols = set(allnan_cols + const_cols)
+    
+    if drop_cols:
+        print(f"[DEBUG] Dropping {len(drop_cols)} problematic columns")
+        exog_train.drop(columns=drop_cols, inplace=True)
+        exog_test.drop(columns=drop_cols, inplace=True, errors='ignore')
 
-    # Align column sets (take intersection)
+    # Keep common columns only
     common_cols = [c for c in exog_train.columns if c in exog_test.columns]
     exog_train = exog_train[common_cols]
     exog_test = exog_test[common_cols]
 
-    # Align with target index (reindex and fill if needed)
+    # Align with target index
     exog_train = exog_train.reindex(target_index)
-    exog_test = exog_test.reindex(pd.date_range(start=exog_test.index.min(), periods=len(exog_test), freq=exog_test.index.freq or "MS"))
+    exog_test = exog_test.reindex(pd.date_range(
+        start=exog_test.index.min(), 
+        periods=len(exog_test), 
+        freq=exog_test.index.freq or "MS"
+    ))
 
-    # Interpolate and forward/backfill on both
+    # Fill missing values
     for df in (exog_train, exog_test):
         if df.isna().sum().sum() > 0:
-            print(f"[DEBUG] Interpolating/filling NaNs in exog (shape={df.shape})")
             df.interpolate(method='linear', limit_direction='both', inplace=True)
-            df.fillna(method='ffill', inplace=True)
-            df.fillna(method='bfill', inplace=True)
+            df.ffill(inplace=True)
+            df.bfill(inplace=True)
 
     return exog_train, exog_test
 
@@ -244,21 +192,17 @@ def train_causal_models(train_data, test_data, exog_train, exog_test, baseline_o
     train_data = train_data.asfreq(train_data.index.freq or "MS")
     test_data = test_data.asfreq(test_data.index.freq or "MS")
 
-    # Decide seasonal_order based on data length (automatic heuristic)
+    # Use the best order from baseline ARIMA if available
     if baseline_orders and 'ARIMA' in baseline_orders:
         info = baseline_orders['ARIMA']
         order = info.get('order', (1, 1, 1))
-        seasonal_order = info.get('seasonal_order', None)
+        seasonal_order = info.get('seasonal_order', (1, 1, 1, 12))
+        print(f"[INFO] Using ARIMA baseline orders: order={order}, seasonal_order={seasonal_order}")
     else:
-        order = (1, 1, 1)
-        # heuristic: if enough history use annual seasonality, else smaller or none
-        if len(train_data) >= 36:
-            seasonal_order = (1, 1, 1, 12)
-        elif len(train_data) >= 18:
-            seasonal_order = (1, 1, 1, 3)
-        else:
-            seasonal_order = None
-        print(f"[DEBUG] Using default heuristic orders: order={order}, seasonal_order={seasonal_order}")
+        # More robust default orders
+        order = (2, 1, 2)
+        seasonal_order = (1, 1, 1, 12) if len(train_data) >= 36 else (0, 0, 0, 0)
+        print(f"[DEBUG] Using default orders: order={order}, seasonal_order={seasonal_order}")
 
     # Clean training series
     if train_data.isna().any():
@@ -276,12 +220,9 @@ def train_causal_models(train_data, test_data, exog_train, exog_test, baseline_o
         print("[ERROR] Insufficient training length for SARIMAX")
         return results
 
-    # If seasonal_order is None, set to (0,0,0,0) for fitting plain ARIMA via SARIMAX (statsmodels tolerates it)
-    seasonal_order_for_fit = seasonal_order if seasonal_order is not None else (0, 0, 0, 0)
-
     try:
-        model = SARIMAXModel(order=order, seasonal_order=seasonal_order_for_fit)
-        model.fit(train_data, exog_data=exog_train_clean, order=order, seasonal_order=seasonal_order_for_fit)
+        model = SARIMAXModel(order=order, seasonal_order=seasonal_order)
+        model.fit(train_data, exog_data=exog_train_clean, order=order, seasonal_order=seasonal_order)
 
         preds, conf = model.predict(n_periods=n_forecast, exog_data=exog_test_clean, return_conf_int=True)
 
@@ -292,17 +233,17 @@ def train_causal_models(train_data, test_data, exog_train, exog_test, baseline_o
         results['metrics']['SARIMAX'] = sarimax_metrics
         results['model_info']['SARIMAX'] = model.get_model_summary()
 
-        print(f"[DEBUG] SARIMAX metrics: {sarimax_metrics}")
+        print(f"✓ SARIMAX metrics: MAE={sarimax_metrics['MAE']:.4f}, RMSE={sarimax_metrics['RMSE']:.4f}, MAPE={sarimax_metrics['MAPE']:.2f}%")
 
         # print coefficients if available
         summary = model.get_model_summary()
         if summary.get("exog_coefficients"):
-            print("\nExogenous variable coefficients:")
+            print("\n→ Exogenous variable coefficients:")
             for k, v in summary["exog_coefficients"].items():
                 try:
-                    print(f"  {k}: {v:.4f}")
+                    print(f"  • {k}: {v:.4f}")
                 except Exception:
-                    print(f"  {k}: {v}")
+                    print(f"  • {k}: {v}")
 
     except Exception as e:
         print("[ERROR] SARIMAX training/prediction failed:")

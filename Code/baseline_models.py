@@ -10,97 +10,71 @@ This module implements:
 import numpy as np
 import pandas as pd
 import warnings
-warnings.filterwarnings("ignore", message="'force_all_finite'")  # Suppress the specific warning
 
-# Handle pmdarima import with error handling
-PM_AVAILABLE = False
-try:
-    import pmdarima as pm
-    PM_AVAILABLE = True
-except (ImportError, ValueError) as e:
-    warnings.warn(f"pmdarima import failed ({str(e)}). Using statsmodels fallback.")
-    # We'll use statsmodels directly as a fallback
-    from statsmodels.tsa.arima.model import ARIMA
-
+# ============================================================================
+# IMPORT STATEMENTS
+# ============================================================================
+from statsmodels.tsa.arima.model import ARIMA
+from statsmodels.tsa.statespace.sarimax import SARIMAX
+from statsmodels.tsa.stattools import adfuller
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from model_utils import compute_metrics, validate_predictions
 from config import ARIMA_PARAMS, ETS_PARAMS
 
+print("[INFO] Using statsmodels ARIMA/SARIMA for forecasting")
+
+
+# ============================================================================
+# BASELINE MODEL CLASSES
+# ============================================================================
+
 
 class BaselineARIMA:
-    def __init__(self, **kwargs):
-        self.params = {
-            "seasonal": False,
-            "start_p": 0, "max_p": 8,
-            "start_q": 0, "max_q": 8,
-            "d": None, "test": "adf",
-            "stationary": False,
-            "stepwise": False,
-            "trend": "ct",  # constant + trend
-            "suppress_warnings": True,
-            "error_action": "ignore",
-            "trace": True,
-            "information_criterion": "aic",
-            "start_P": 0, "max_P": 0,  # ensure no seasonal search
-        }
-        self.params.update(kwargs)
+    """
+    ARIMA/SARIMA model implementation using statsmodels with seasonal support.
+    
+    Automatically selects the best order based on grid search and AIC.
+    """
+    
+    def __init__(self, seasonal=True, m=12, **kwargs):
+        """
+        Initialize ARIMA model with default parameters.
+        
+        Args:
+            seasonal (bool): Whether to use seasonal ARIMA (SARIMA)
+            m (int): Seasonal period (12 for monthly data)
+        """
+        self.params = kwargs
         self.model = None
         self.fitted = False
         self.order = None
+        self.seasonal_order = None
+        self.seasonal = seasonal
+        self.m = m
+        self.transform_method = None
+        self.transform_lambda = None
+
+    def _apply_transform(self, data):
+        """Apply log or Box-Cox transformation for variance stabilization."""
+        if data.min() > 0:
+            # Use log transformation for positive data
+            self.transform_method = 'log'
+            return np.log(data), None
+        else:
+            # No transformation if data contains zeros/negatives
+            self.transform_method = None
+            return data, None
+    
+    def _inverse_transform(self, data):
+        """Inverse transformation to get back to original scale."""
+        if self.transform_method == 'log':
+            return np.exp(data)
+        else:
+            return data
 
     def fit(self, train_data):
-        # No need to check frequency, we assume it's already set correctly
-        if train_data.isna().any():
-            train_data = train_data.interpolate().bfill().ffill()
-
-        if np.std(train_data) < 1e-8:
-            raise ValueError("Insufficient variation")
-
-        try:
-            self.model = pm.auto_arima(
-                train_data,
-                **self.params,
-                transform='log',  # variance stabilization
-            )
-            self.order = self.model.order
-            self.fitted = True
-        except Exception as e:
-            raise
-        return self
-
-    def predict(self, n_periods, return_conf_int=True):
-        if not self.fitted:
-            raise ValueError("Model not fitted")
-
-        result = self.model.predict(n_periods=n_periods, return_conf_int=return_conf_int)
-        return result
-
-    def get_model_info(self):
-        return {"order": self.order, "aic": getattr(self.model, 'aic', None), "fitted": self.fitted}
-
-
-class ExponentialSmoothingModel:
-    """
-    Exponential Smoothing (Holt-Winters) baseline model implementation.
-    
-    This class provides exponential smoothing with trend and seasonal components.
-    """
-    
-    def __init__(self, **kwargs):
         """
-        Initialize Exponential Smoothing model.
-        
-        Args:
-            **kwargs: Additional parameters to override defaults
-        """
-        self.params = {**ETS_PARAMS, **kwargs}
-        self.model = None
-        self.fitted_model = None
-        self.fitted = False
-    
-    def fit(self, train_data):
-        """
-        Fit Exponential Smoothing model to training data.
+        Fit SARIMA model to training data with automatic order selection.
         
         Args:
             train_data (pd.Series): Training time series data
@@ -108,61 +82,214 @@ class ExponentialSmoothingModel:
         Returns:
             self: Fitted model instance
         """
-        print("Fitting Exponential Smoothing (Holt-Winters) model...")
+        # Handle missing values
+        if train_data.isna().any():
+            train_data = train_data.interpolate().bfill().ffill()
+
+        # Check for sufficient variation
+        if np.std(train_data) < 1e-8:
+            raise ValueError("Insufficient variation in training data")
+
+        print("[INFO] Fitting SARIMA model with grid search for optimal parameters...")
         
-        # No need to check or set frequency here, already done in train_baseline_models
+        # Apply transformation for variance stabilization
+        train_transformed, self.transform_lambda = self._apply_transform(train_data)
+        if self.transform_method:
+            print(f"[INFO] Applied {self.transform_method} transformation")
         
-        try:
-            self.model = ExponentialSmoothing(train_data, **self.params)
-            self.fitted_model = self.model.fit(optimized=True)
-            self.fitted = True
-            print("Exponential Smoothing model fitted successfully")
-        except Exception as e:
-            print(f"Warning: Could not fit additive model: {e}")
-            print("Trying multiplicative seasonal model...")
+        # Test for stationarity using ADF test
+        adf_result = adfuller(train_transformed)
+        d = 0 if adf_result[1] < 0.05 else 1
+        print(f"[INFO] ADF test p-value: {adf_result[1]:.4f}, differencing order d={d}")
+        
+        # Determine trend parameter based on differencing order
+        if d == 0:
+            trend_param = 'ct'
+        elif d == 1:
+            trend_param = 't'
+        else:
+            trend_param = None
+        
+        # Optimized grid search - fewer combinations for speed
+        p_values = [0, 1, 2, 3]
+        q_values = [0, 1, 2]
+        
+        if self.seasonal and len(train_data) >= 24:
+            # Test for seasonal differencing
+            seasonal_d = 0
+            if len(train_data) >= self.m * 2:
+                seasonal_adf = adfuller(train_transformed.diff(self.m).dropna())
+                seasonal_d = 0 if seasonal_adf[1] < 0.05 else 1
             
-            # Fallback to multiplicative if additive fails
-            params_mult = self.params.copy()
-            params_mult['seasonal'] = 'mul'
-            
-            try:
-                self.model = ExponentialSmoothing(train_data, **params_mult)
-                self.fitted_model = self.model.fit(optimized=True)
-                self.fitted = True
-                print("Multiplicative Exponential Smoothing model fitted successfully")
-            except Exception as e2:
-                print(f"Error: Could not fit exponential smoothing model: {e2}")
-                raise e2
+            P_values = [0, 1]
+            Q_values = [0, 1]
+            seasonal_orders = [(P, seasonal_d, Q, self.m) for P in P_values for Q in Q_values]
+            print(f"[INFO] Using SARIMA with seasonal period m={self.m}")
+        else:
+            seasonal_orders = [(0, 0, 0, 0)]
+            print("[INFO] Using non-seasonal ARIMA (insufficient data for seasonality)")
+        
+        best_aic = np.inf
+        best_model = None
+        best_order = None
+        best_seasonal_order = None
+        
+        # Grid search with early stopping
+        total_combinations = len(p_values) * len(q_values) * len(seasonal_orders)
+        print(f"[INFO] Testing up to {total_combinations} model combinations...")
+        
+        tested = 0
+        no_improvement_count = 0
+        
+        for p in p_values:
+            for q in q_values:
+                order = (p, d, q)
+                for seasonal_order in seasonal_orders:
+                    tested += 1
+                    try:
+                        # Skip if no parameters
+                        if p == 0 and q == 0 and seasonal_order[0] == 0 and seasonal_order[2] == 0:
+                            continue
+                        
+                        temp_model = SARIMAX(
+                            train_transformed,
+                            order=order,
+                            seasonal_order=seasonal_order,
+                            trend=trend_param,
+                            enforce_stationarity=False,
+                            enforce_invertibility=False
+                        )
+                        temp_fitted = temp_model.fit(disp=False, maxiter=50, method='lbfgs')
+                        
+                        if temp_fitted.aic < best_aic:
+                            best_aic = temp_fitted.aic
+                            best_model = temp_fitted
+                            best_order = order
+                            best_seasonal_order = seasonal_order
+                            no_improvement_count = 0
+                            print(f"[INFO] ✓ Best: SARIMA{order}x{seasonal_order}, AIC={best_aic:.2f}")
+                        else:
+                            no_improvement_count += 1
+                        
+                        # Early stopping if no improvement in last 10 models
+                        if no_improvement_count >= 10:
+                            print(f"[INFO] Early stopping after {tested} models")
+                            break
+                            
+                    except Exception:
+                        continue
+                        
+                if no_improvement_count >= 10:
+                    break
+            if no_improvement_count >= 10:
+                break
+        
+        if best_model is None:
+            raise ValueError("Could not fit SARIMA model with any configuration")
+        
+        self.model = best_model
+        self.order = best_order
+        self.seasonal_order = best_seasonal_order
+        self.fitted = True
+        print(f"[INFO] ✓ Final SARIMA model: order={self.order}, seasonal_order={self.seasonal_order}, AIC={best_aic:.2f}")
         
         return self
-    
-    def predict(self, n_periods):
+
+    def predict(self, n_periods, return_conf_int=True):
         """
         Generate forecasts for specified number of periods.
         
         Args:
             n_periods (int): Number of periods to forecast
+            return_conf_int (bool): Whether to return confidence intervals
             
         Returns:
-            pd.Series: Predictions
+            tuple: (predictions, confidence_intervals) if return_conf_int=True
+            pd.Series: predictions if return_conf_int=False
         """
         if not self.fitted:
             raise ValueError("Model must be fitted before prediction")
-            
-        # Ensure n_periods is positive
-        if n_periods <= 0:
-            raise ValueError("n_periods must be positive")
+
+        # Generate forecast in transformed space
+        forecast_result = self.model.forecast(steps=n_periods)
         
-        predictions = self.fitted_model.forecast(steps=n_periods)
-        return predictions
-    
+        # Inverse transform back to original scale
+        forecast_result = self._inverse_transform(forecast_result)
+        
+        if return_conf_int:
+            # Get prediction intervals in transformed space
+            pred_summary = self.model.get_forecast(steps=n_periods)
+            conf_int = pred_summary.conf_int()
+            
+            # Inverse transform confidence intervals
+            conf_int_transformed = pd.DataFrame({
+                'lower': self._inverse_transform(conf_int.iloc[:, 0]),
+                'upper': self._inverse_transform(conf_int.iloc[:, 1])
+            }, index=conf_int.index)
+            
+            return forecast_result, conf_int_transformed
+        else:
+            return forecast_result
+
     def get_model_info(self):
         """
         Get model information and parameters.
         
         Returns:
-            dict: Model information including parameters and fit statistics
+            dict: Model information including order and AIC
         """
+        if not self.fitted:
+            return {"status": "not_fitted"}
+            
+        return {
+            "order": self.order,
+            "seasonal_order": self.seasonal_order,
+            "aic": self.model.aic, 
+            "bic": self.model.bic,
+            "transformation": self.transform_method,
+            "fitted": True
+        }
+
+
+class ExponentialSmoothingModel:
+    """Exponential Smoothing (Holt-Winters) model with automatic fallback."""
+    
+    def __init__(self, **kwargs):
+        self.params = {**ETS_PARAMS, **kwargs}
+        self.fitted_model = None
+        self.fitted = False
+    
+    def fit(self, train_data):
+        """Fit model with automatic fallback to multiplicative if additive fails."""
+        print("→ Fitting Exponential Smoothing...")
+        
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore")
+            
+            try:
+                model = ExponentialSmoothing(train_data, **self.params)
+                self.fitted_model = model.fit(optimized=True)
+                self.fitted = True
+                print("✓ Additive model fitted")
+            except Exception:
+                # Fallback to multiplicative
+                params_mult = self.params.copy()
+                params_mult['seasonal'] = 'mul'
+                model = ExponentialSmoothing(train_data, **params_mult)
+                self.fitted_model = model.fit(optimized=True)
+                self.fitted = True
+                print("✓ Multiplicative model fitted")
+        
+        return self
+    
+    def predict(self, n_periods):
+        """Generate forecasts."""
+        if not self.fitted:
+            raise ValueError("Model not fitted")
+        return self.fitted_model.forecast(steps=n_periods)
+    
+    def get_model_info(self):
+        """Get model information."""
         if not self.fitted:
             return {"status": "not_fitted"}
         
@@ -206,180 +333,95 @@ def train_baseline_models(train_data, test_data):
     Returns:
         dict: Results containing models, predictions, and metrics
     """
-    results = {
-        'models': {},
-        'predictions': {},
-        'metrics': {},
-        'model_info': {}
-    }
+    results = {'models': {}, 'predictions': {}, 'metrics': {}, 'model_info': {}, 'errors': {}}
     
-    # Verify test_data is valid
+    # Validate inputs
     if test_data is None or len(test_data) == 0:
-        print("Error: Test data is empty or None. Cannot evaluate models.")
+        print("Error: Test data is empty")
         results['errors'] = {'general': "Empty test data"}
+        return results
+    
+    if len(train_data) <= 12:
+        print("Error: Need at least 12 observations for modeling")
+        results['errors'] = {'general': "Insufficient training data"}
         return results
     
     n_forecast = len(test_data)
     print(f"Forecasting {n_forecast} periods ahead")
     
-    print("Validating input data...")
+    # Ensure monthly frequency
+    train_data = ensure_monthly_frequency(train_data)
+    test_data = ensure_monthly_frequency(test_data)
     
-    # Set proper monthly frequency once at the beginning
+    # Clean training data
+    train_clean = train_data.copy()
+    if train_clean.isna().any():
+        train_clean = train_clean.interpolate(method='linear').ffill().bfill()
+    
+    print(f"Training data: {len(train_clean)} obs, range=[{train_clean.min():.0f}, {train_clean.max():.0f}], std={train_clean.std():.0f}")
+    
+    # Train ARIMA
+    _train_arima_model(train_clean, test_data, n_forecast, results)
+    
+    # Train ETS
+    _train_ets_model(train_clean, test_data, n_forecast, results)
+    
+    return results
+
+
+def _train_arima_model(train_data, test_data, n_forecast, results):
+    """Helper function to train ARIMA model."""
     try:
-        # Convert to datetime and set monthly frequency for both train and test
-        train_data = ensure_monthly_frequency(train_data)
-        test_data = ensure_monthly_frequency(test_data)
-    except Exception as e:
-        print(f"Error setting monthly frequency: {e}")
-        results['errors'] = {'general': f"Frequency conversion error: {str(e)}"}
-        return results
-    
-    # Handle NaN values in training data
-    train_data_clean = train_data.copy()
-    if train_data_clean.isna().any():
-        print(f"Found NaN values in training data. Applying interpolation and filling.")
-        train_data_clean = train_data_clean.interpolate(method='linear').fillna(
-            method='ffill').fillna(method='bfill')
-    
-    # Add data diagnostics for debugging
-    print(f"Training data shape: {train_data_clean.shape}")
-    print(f"Training data range: [{train_data_clean.min()}, {train_data_clean.max()}]")
-    print(f"Training data std: {train_data_clean.std()}")
-    
-    # Check if data is empty or too small for modeling
-    if len(train_data_clean) <= 12:  # Need at least a year of data for seasonal models
-        print("Error: Not enough training data for modeling. Need at least 12 observations.")
-        results['errors'] = results.get('errors', {})
-        results['errors']['general'] = "Insufficient training data"
-        return results
-    
-    # Train ARIMA model
-    try:
-        print("Ensuring data is valid for ARIMA modeling...")
-        # Check if data has variation (not all same values)
-        if np.std(train_data_clean) == 0:
-            raise ValueError("Training data has no variation (all values are the same)")
-            
+        print("\n→ Training ARIMA/SARIMA model...")
         arima_model = BaselineARIMA()
-        arima_model.fit(train_data_clean)
+        arima_model.fit(train_data)
         
-        # Verify n_forecast is positive before prediction
-        if n_forecast <= 0:
-            print("Warning: Test data length is 0, setting n_forecast to 1")
-            n_forecast = 1
+        arima_pred, arima_conf = arima_model.predict(n_periods=n_forecast, return_conf_int=True)
         
-        # Fix unpacking error with try/except block    
-        try:
-            # This is the line causing issues, make it more robust
-            arima_pred_result = arima_model.predict(
-                n_periods=n_forecast, 
-                return_conf_int=True
-            )
-            
-            # Handle different return formats
-            if isinstance(arima_pred_result, tuple) and len(arima_pred_result) == 2:
-                arima_pred, arima_conf = arima_pred_result
-            else:
-                print("Warning: ARIMA prediction didn't return expected tuple format")
-                arima_pred = arima_pred_result
-                # Create dummy confidence intervals
-                arima_conf = np.array([[p * 0.9, p * 1.1] for p in arima_pred])
-        except Exception as e:
-            print(f"Error during ARIMA prediction unpacking: {e}")
-            # Create fallback predictions
-            arima_pred = np.array([train_data_clean.iloc[-1]] * n_forecast)
-            arima_conf = np.array([[p * 0.9, p * 1.1] for p in arima_pred])
+        # Create series with proper index
+        pred_index = test_data.index if len(test_data.index) == len(arima_pred) else \
+                     pd.date_range(start=train_data.index[-1] + pd.DateOffset(months=1), periods=n_forecast, freq='MS')
         
-        # Convert predictions to appropriate format
-        if isinstance(arima_pred, np.ndarray):
-            # Create proper index for predictions with correct frequency
-            if len(test_data.index) == len(arima_pred):
-                pred_index = test_data.index
-            else:
-                # Create new index if lengths don't match
-                last_train_date = train_data_clean.index[-1]
-                pred_index = pd.date_range(start=last_train_date + pd.DateOffset(months=1),
-                                         periods=len(arima_pred),
-                                         freq='MS')
-                
-            arima_pred_series = pd.Series(arima_pred, index=pred_index)
-        else:
-            arima_pred_series = arima_pred
-            
-        # Handle confidence intervals
-        if isinstance(arima_conf, np.ndarray):
-            # Use the same index as predictions
-            if hasattr(arima_pred_series, 'index'):
-                conf_index = arima_pred_series.index
-            else:
-                conf_index = test_data.index[:len(arima_conf)]
-                
-            arima_conf_df = pd.DataFrame(
-                arima_conf, 
-                index=conf_index, 
-                columns=['lower', 'upper']
-            )
-        else:
-            arima_conf_df = arima_conf
+        arima_pred_series = pd.Series(arima_pred, index=pred_index)
+        arima_conf.index = pred_index
         
-        # Ensure arrays are not empty before computing metrics
-        if len(test_data) > 0 and len(arima_pred) > 0:
-            # Make sure lengths match for comparison
-            min_len = min(len(test_data), len(arima_pred))
-            arima_metrics = compute_metrics(test_data.values[:min_len], arima_pred[:min_len])
-        else:
-            arima_metrics = {'MAE': np.nan, 'RMSE': np.nan, 'MAPE': np.nan}
-            print("Warning: Empty test data or predictions, metrics set to NaN")
+        # Compute metrics
+        min_len = min(len(test_data), len(arima_pred))
+        arima_metrics = compute_metrics(test_data.values[:min_len], arima_pred[:min_len])
         
         results['models']['ARIMA'] = arima_model
-        results['predictions']['ARIMA'] = {
-            'forecast': arima_pred_series,
-            'confidence_intervals': arima_conf_df
-        }
+        results['predictions']['ARIMA'] = {'forecast': arima_pred_series, 'confidence_intervals': arima_conf}
         results['metrics']['ARIMA'] = arima_metrics
         results['model_info']['ARIMA'] = arima_model.get_model_info()
         
-        print(f"ARIMA metrics: {arima_metrics}")
+        print(f"✓ ARIMA: MAE={arima_metrics['MAE']:.0f}, RMSE={arima_metrics['RMSE']:.0f}, MAPE={arima_metrics['MAPE']:.2f}%")
         
     except Exception as e:
-        print(f"Error training ARIMA model: {e}")
-        print("Continuing with other models despite ARIMA failure")
+        print(f"✗ ARIMA failed: {e}")
         results['errors'] = results.get('errors', {})
         results['errors']['ARIMA'] = str(e)
-    
-    # Train Exponential Smoothing model with similar error handling
+
+
+def _train_ets_model(train_data, test_data, n_forecast, results):
+    """Helper function to train ETS model."""
     try:
+        print("\n→ Training Exponential Smoothing model...")
         ets_model = ExponentialSmoothingModel()
-        ets_model.fit(train_data_clean)
-        
-        # Verify n_forecast is positive before prediction
-        if n_forecast <= 0:
-            print("Warning: Test data length is 0, setting n_forecast to 1")
-            n_forecast = 1
-            
+        ets_model.fit(train_data)
         ets_pred = ets_model.predict(n_periods=n_forecast)
         
-        # Ensure arrays are not empty before computing metrics
-        if len(test_data) > 0 and len(ets_pred) > 0:
-            # Make sure lengths match for comparison
-            min_len = min(len(test_data), len(ets_pred))
-            ets_metrics = compute_metrics(test_data.values[:min_len], ets_pred.values[:min_len])
-        else:
-            ets_metrics = {'MAE': np.nan, 'RMSE': np.nan, 'MAPE': np.nan}
-            print("Warning: Empty test data or predictions, metrics set to NaN")
+        # Compute metrics
+        min_len = min(len(test_data), len(ets_pred))
+        ets_metrics = compute_metrics(test_data.values[:min_len], ets_pred.values[:min_len])
         
         results['models']['ETS'] = ets_model
-        results['predictions']['ETS'] = {
-            'forecast': ets_pred
-        }
+        results['predictions']['ETS'] = {'forecast': ets_pred}
         results['metrics']['ETS'] = ets_metrics
         results['model_info']['ETS'] = ets_model.get_model_info()
         
-        print(f"ETS metrics: {ets_metrics}")
+        print(f"✓ ETS: MAE={ets_metrics['MAE']:.0f}, RMSE={ets_metrics['RMSE']:.0f}, MAPE={ets_metrics['MAPE']:.2f}%")
         
     except Exception as e:
-        print(f"Error training ETS model: {e}")
+        print(f"✗ ETS failed: {e}")
         results['errors'] = results.get('errors', {})
         results['errors']['ETS'] = str(e)
-    
-    return results
