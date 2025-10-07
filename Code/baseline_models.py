@@ -167,7 +167,7 @@ class BaselineARIMA:
                             best_order = order
                             best_seasonal_order = seasonal_order
                             no_improvement_count = 0
-                            print(f"[INFO] ✓ Best: SARIMA{order}x{seasonal_order}, AIC={best_aic:.2f}")
+                            print(f"[INFO] (+) Best: SARIMA{order}x{seasonal_order}, AIC={best_aic:.2f}")
                         else:
                             no_improvement_count += 1
                         
@@ -191,7 +191,7 @@ class BaselineARIMA:
         self.order = best_order
         self.seasonal_order = best_seasonal_order
         self.fitted = True
-        print(f"[INFO] ✓ Final SARIMA model: order={self.order}, seasonal_order={self.seasonal_order}, AIC={best_aic:.2f}")
+        print(f"[INFO] (+) Final SARIMA model: order={self.order}, seasonal_order={self.seasonal_order}, AIC={best_aic:.2f}")
         
         return self
 
@@ -261,7 +261,7 @@ class ExponentialSmoothingModel:
     
     def fit(self, train_data):
         """Fit model with automatic fallback to multiplicative if additive fails."""
-        print("→ Fitting Exponential Smoothing...")
+        print("-> Fitting Exponential Smoothing...")
         
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore")
@@ -270,7 +270,7 @@ class ExponentialSmoothingModel:
                 model = ExponentialSmoothing(train_data, **self.params)
                 self.fitted_model = model.fit(optimized=True)
                 self.fitted = True
-                print("✓ Additive model fitted")
+                print("(+) Additive model fitted")
             except Exception:
                 # Fallback to multiplicative
                 params_mult = self.params.copy()
@@ -278,7 +278,7 @@ class ExponentialSmoothingModel:
                 model = ExponentialSmoothing(train_data, **params_mult)
                 self.fitted_model = model.fit(optimized=True)
                 self.fitted = True
-                print("✓ Multiplicative model fitted")
+                print("(+) Multiplicative model fitted")
         
         return self
     
@@ -372,7 +372,7 @@ def train_baseline_models(train_data, test_data):
 def _train_arima_model(train_data, test_data, n_forecast, results):
     """Helper function to train ARIMA model."""
     try:
-        print("\n→ Training ARIMA/SARIMA model...")
+        print("\n-> Training ARIMA/SARIMA model...")
         arima_model = BaselineARIMA()
         arima_model.fit(train_data)
         
@@ -394,10 +394,10 @@ def _train_arima_model(train_data, test_data, n_forecast, results):
         results['metrics']['ARIMA'] = arima_metrics
         results['model_info']['ARIMA'] = arima_model.get_model_info()
         
-        print(f"✓ ARIMA: MAE={arima_metrics['MAE']:.0f}, RMSE={arima_metrics['RMSE']:.0f}, MAPE={arima_metrics['MAPE']:.2f}%")
+        print(f"(+) ARIMA: MAE={arima_metrics['MAE']:.0f}, RMSE={arima_metrics['RMSE']:.0f}, MAPE={arima_metrics['MAPE']:.2f}%")
         
     except Exception as e:
-        print(f"✗ ARIMA failed: {e}")
+        print(f"(x) ARIMA failed: {e}")
         results['errors'] = results.get('errors', {})
         results['errors']['ARIMA'] = str(e)
 
@@ -405,7 +405,7 @@ def _train_arima_model(train_data, test_data, n_forecast, results):
 def _train_ets_model(train_data, test_data, n_forecast, results):
     """Helper function to train ETS model."""
     try:
-        print("\n→ Training Exponential Smoothing model...")
+        print("\n-> Training Exponential Smoothing model...")
         ets_model = ExponentialSmoothingModel()
         ets_model.fit(train_data)
         ets_pred = ets_model.predict(n_periods=n_forecast)
@@ -419,9 +419,9 @@ def _train_ets_model(train_data, test_data, n_forecast, results):
         results['metrics']['ETS'] = ets_metrics
         results['model_info']['ETS'] = ets_model.get_model_info()
         
-        print(f"✓ ETS: MAE={ets_metrics['MAE']:.0f}, RMSE={ets_metrics['RMSE']:.0f}, MAPE={ets_metrics['MAPE']:.2f}%")
+        print(f"(+) ETS: MAE={ets_metrics['MAE']:.0f}, RMSE={ets_metrics['RMSE']:.0f}, MAPE={ets_metrics['MAPE']:.2f}%")
         
     except Exception as e:
-        print(f"✗ ETS failed: {e}")
+        print(f"(x) ETS failed: {e}")
         results['errors'] = results.get('errors', {})
         results['errors']['ETS'] = str(e)

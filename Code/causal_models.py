@@ -233,17 +233,17 @@ def train_causal_models(train_data, test_data, exog_train, exog_test, baseline_o
         results['metrics']['SARIMAX'] = sarimax_metrics
         results['model_info']['SARIMAX'] = model.get_model_summary()
 
-        print(f"✓ SARIMAX metrics: MAE={sarimax_metrics['MAE']:.4f}, RMSE={sarimax_metrics['RMSE']:.4f}, MAPE={sarimax_metrics['MAPE']:.2f}%")
+        print(f"(+) SARIMAX metrics: MAE={sarimax_metrics['MAE']:.4f}, RMSE={sarimax_metrics['RMSE']:.4f}, MAPE={sarimax_metrics['MAPE']:.2f}%")
 
         # print coefficients if available
         summary = model.get_model_summary()
         if summary.get("exog_coefficients"):
-            print("\n→ Exogenous variable coefficients:")
+            print("\n-> Exogenous variable coefficients:")
             for k, v in summary["exog_coefficients"].items():
                 try:
-                    print(f"  • {k}: {v:.4f}")
+                    print(f"  * {k}: {v:.4f}")
                 except Exception:
-                    print(f"  • {k}: {v}")
+                    print(f"  * {k}: {v}")
 
     except Exception as e:
         print("[ERROR] SARIMAX training/prediction failed:")

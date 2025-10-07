@@ -111,7 +111,7 @@ def load_and_prepare(csv_path):
         df = df.loc[:cutoff_date]
         max_date = cutoff_date
     
-    print(f"✓ Detected actual data range: {min_date.strftime('%Y-%m')} to {max_date.strftime('%Y-%m')}")
+    print(f"(+) Detected actual data range: {min_date.strftime('%Y-%m')} to {max_date.strftime('%Y-%m')}")
     
     # Check for truly empty cells that should be considered NaN
     empty_cells = (df == '') | (df.astype(str) == 'nan')

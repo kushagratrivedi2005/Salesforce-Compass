@@ -10,7 +10,7 @@ import numpy as np
 # ------------------------- File Paths -------------------------
 CSV_PATH = 'final_merged_dataset.csv'      # Path to merged dataset
 RESULTS_DIR = 'forecast_results'           # Directory to save outputs
-DATASET_DIR = '/Users/hellgamerhell/Downloads/salesforce/Salesforce-Compass/dataset'
+DATASET_DIR = '/Users/evanb/OneDrive/Documents/GitHub/Salesforce-Compass/dataset'
 
 # ------------------------- Model Configuration -------------------------
 TARGET = 'category_LIGHT PASSENGER VEHICLE'                      # Primary forecasting target

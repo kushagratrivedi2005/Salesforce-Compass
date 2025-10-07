@@ -82,10 +82,10 @@ def generate_future_forecast(model_results, full_history, future_periods, exog_d
     # Only process ARIMA, ETS, and SARIMAX models
     for model_name in ['ARIMA', 'ETS', 'SARIMAX']:
         if model_name not in models:
-            print(f"⚠ Skipping future forecast for {model_name} (model not found).")
+            print(f"(!) Skipping future forecast for {model_name} (model not found).")
             continue
 
-        print(f"\n→ Generating future forecast for {model_name}...")
+        print(f"\n-> Generating future forecast for {model_name}...")
         model = models[model_name]
         
         try:
@@ -162,7 +162,7 @@ def generate_future_forecast(model_results, full_history, future_periods, exog_d
                         
                     future_forecasts[model_name] = {'forecast': preds}
                     
-            print(f"  ✓ {model_name} future forecast generated successfully")
+            print(f"  (+) {model_name} future forecast generated successfully")
             
         except Exception as e:
             print(f"  ✗ Error generating future forecast for {model_name}: {e}")
@@ -199,9 +199,9 @@ def run_forecasting_pipeline(csv_path=CSV_PATH, target=TARGET,
 
     full_csv_path = os.path.join(DATASET_DIR, csv_path)
     if not os.path.exists(full_csv_path):
-        print(f"✗ Error: CSV file not found at {full_csv_path}")
+        print(f"(x) Error: CSV file not found at {full_csv_path}")
         return None
-    print(f"✓ Environment prepared successfully")
+    print(f"(+) Environment prepared successfully")
     
     # ========================================================================
     # STEP 2: Data Loading and Preprocessing
@@ -210,12 +210,12 @@ def run_forecasting_pipeline(csv_path=CSV_PATH, target=TARGET,
     df = load_and_prepare(full_csv_path)
 
     if target not in df.columns:
-        print(f"✗ Error: Target variable '{target}' not found in the dataset")
+        print(f"(x) Error: Target variable '{target}' not found in the dataset")
         return None
 
-    print(f"✓ Target variable: {target}")
-    print(f"✓ Date range: {df.index.min().strftime('%Y-%m')} to {df.index.max().strftime('%Y-%m')}")
-    print(f"✓ Total observations: {len(df)}")
+    print(f"(+) Target variable: {target}")
+    print(f"(+) Date range: {df.index.min().strftime('%Y-%m')} to {df.index.max().strftime('%Y-%m')}")
+    print(f"(+) Total observations: {len(df)}")
     
     # ========================================================================
     # STEP 3: Train/Test Splitting
@@ -224,11 +224,11 @@ def run_forecasting_pipeline(csv_path=CSV_PATH, target=TARGET,
     target_series = df[target]
     
     # Handle outliers in target series before splitting
-    print("→ Detecting and handling outliers in target variable...")
+    print("-> Detecting and handling outliers in target variable...")
     target_series_clean = detect_and_handle_outliers(target_series, method='iqr', replace_with='interpolate')
     n_outliers = (target_series != target_series_clean).sum()
     if n_outliers > 0:
-        print(f"✓ Handled {n_outliers} outliers in target variable")
+        print(f"(+) Handled {n_outliers} outliers in target variable")
         target_series = target_series_clean
     
     train_end_date = '2025-01-01'
@@ -240,8 +240,8 @@ def run_forecasting_pipeline(csv_path=CSV_PATH, target=TARGET,
         test_end_date=test_end_date
     )
     
-    print(f"✓ Training data: {len(train_data)} observations ({train_data.index.min().strftime('%Y-%m')} to {train_data.index.max().strftime('%Y-%m')})")
-    print(f"✓ Test data: {len(test_data)} observations ({test_data.index.min().strftime('%Y-%m')} to {test_data.index.max().strftime('%Y-%m')})")
+    print(f"(+) Training data: {len(train_data)} observations ({train_data.index.min().strftime('%Y-%m')} to {train_data.index.max().strftime('%Y-%m')})")
+    print(f"(+) Test data: {len(test_data)} observations ({test_data.index.min().strftime('%Y-%m')} to {test_data.index.max().strftime('%Y-%m')})")
     
     # ========================================================================
     # STEP 4: Baseline Model Training (ARIMA, ETS)
@@ -251,9 +251,9 @@ def run_forecasting_pipeline(csv_path=CSV_PATH, target=TARGET,
     baseline_results = train_baseline_models(train_data, test_data)
     
     if baseline_results.get('models'):
-        print(f"✓ Successfully trained {len(baseline_results['models'])} baseline model(s): {', '.join(baseline_results['models'].keys())}")
+        print(f"(+) Successfully trained {len(baseline_results['models'])} baseline model(s): {', '.join(baseline_results['models'].keys())}")
     else:
-        print("⚠ Warning: No baseline models were successfully trained")
+        print("(!) Warning: No baseline models were successfully trained")
     
     # ========================================================================
     # STEP 5: Exogenous Variables Preparation
@@ -264,23 +264,23 @@ def run_forecasting_pipeline(csv_path=CSV_PATH, target=TARGET,
     exog_df = pd.DataFrame()
 
     if USE_TOP_K_EXOGS:
-        print(f"→ Using top-{TOP_K_EXOGS} correlated exogenous variables")
+        print(f"-> Using top-{TOP_K_EXOGS} correlated exogenous variables")
         selected_exogs, exog_df, correlations = prepare_exogenous_variables(
             df, CANDIDATE_EXOGS, target, top_k=TOP_K_EXOGS
         )
         if selected_exogs:
-            print(f"✓ Selected exogenous variables:")
+            print(f"(+) Selected exogenous variables:")
             for exog in selected_exogs:
-                print(f"  • {exog} (correlation: {correlations[exog]:.4f})")
+                print(f"  * {exog} (correlation: {correlations[exog]:.4f})")
     else:
-        print(f"→ Using manually specified exogenous variables: {MANUAL_EXOGS}")
+        print(f"-> Using manually specified exogenous variables: {MANUAL_EXOGS}")
         selected_exogs = [exog for exog in MANUAL_EXOGS if exog in df.columns]
         if selected_exogs:
             exog_df = df[selected_exogs]
-            print(f"✓ Selected exogenous variables: {', '.join(selected_exogs)}")
+            print(f"(+) Selected exogenous variables: {', '.join(selected_exogs)}")
 
     if not selected_exogs:
-        print("⚠ Warning: No exogenous variables selected or available")
+        print("(!) Warning: No exogenous variables selected or available")
     
     exog_train, exog_test = train_test_split_by_date(
         exog_df,
@@ -299,9 +299,9 @@ def run_forecasting_pipeline(csv_path=CSV_PATH, target=TARGET,
     )
     
     if causal_results.get('models'):
-        print(f"✓ Successfully trained {len(causal_results['models'])} causal model(s): {', '.join(causal_results['models'].keys())}")
+        print(f"(+) Successfully trained {len(causal_results['models'])} causal model(s): {', '.join(causal_results['models'].keys())}")
     else:
-        print("⚠ Warning: No causal models were successfully trained")
+        print("(!) Warning: No causal models were successfully trained")
     
     # ========================================================================
     # STEP 7: Results Combination
@@ -319,7 +319,7 @@ def run_forecasting_pipeline(csv_path=CSV_PATH, target=TARGET,
     }
     
     total_models = len(all_results['models'])
-    print(f"✓ Combined {total_models} models for comparison")
+    print(f"(+) Combined {total_models} models for comparison")
     
     # ========================================================================
     # STEP 8: Visualization Dashboard Creation
@@ -331,9 +331,9 @@ def run_forecasting_pipeline(csv_path=CSV_PATH, target=TARGET,
     
     if all_results['predictions']:
         create_forecast_dashboard(all_results, target, save_dir=viz_dir)
-        print(f"✓ Visualizations saved to: {viz_dir}")
+        print(f"(+) Visualizations saved to: {viz_dir}")
     else:
-        print("⚠ Warning: No predictions available for visualization")
+        print("(!) Warning: No predictions available for visualization")
     
     # ========================================================================
     # STEP 9: Summary and Results Export
@@ -347,7 +347,7 @@ def run_forecasting_pipeline(csv_path=CSV_PATH, target=TARGET,
         metrics_df = pd.DataFrame(all_results['metrics']).T
         metrics_file = os.path.join(results_dir, 'forecast_metrics.csv')
         metrics_df.to_csv(metrics_file)
-        print(f"✓ Metrics saved to: {metrics_file}")
+        print(f"(+) Metrics saved to: {metrics_file}")
 
     # Save predictions
     if all_results['predictions']:
@@ -358,7 +358,7 @@ def run_forecasting_pipeline(csv_path=CSV_PATH, target=TARGET,
         predictions_df['Actual'] = test_data
         predictions_file = os.path.join(results_dir, 'forecast_predictions.csv')
         predictions_df.to_csv(predictions_file)
-        print(f"✓ Predictions saved to: {predictions_file}")
+        print(f"(+) Predictions saved to: {predictions_file}")
     
     # ========================================================================
     # STEP 10: Future Forecasting
@@ -367,7 +367,7 @@ def run_forecasting_pipeline(csv_path=CSV_PATH, target=TARGET,
         print_section_header("STEP 10: Generating Future Forecasts")
         
         full_history = pd.concat([train_data, test_data])
-        print(f"→ Generating {future_forecast_months}-month forecasts beyond {full_history.index.max().strftime('%Y-%m')}")
+        print(f"-> Generating {future_forecast_months}-month forecasts beyond {full_history.index.max().strftime('%Y-%m')}")
         
         future_forecasts = generate_future_forecast(
             all_results,
@@ -384,7 +384,7 @@ def run_forecasting_pipeline(csv_path=CSV_PATH, target=TARGET,
             })
             future_file = os.path.join(results_dir, 'future_forecasts.csv')
             future_df.to_csv(future_file)
-            print(f"\n✓ Future forecasts saved to: {future_file}")
+            print(f"\n(+) Future forecasts saved to: {future_file}")
 
             all_results['future_forecasts'] = future_forecasts
             
@@ -423,9 +423,9 @@ def run_forecasting_pipeline(csv_path=CSV_PATH, target=TARGET,
             plt.savefig(future_viz_file, dpi=300, bbox_inches='tight')
             plt.close()
             
-            print(f"✓ Future forecast visualization saved to: {future_viz_file}")
+            print(f"(+) Future forecast visualization saved to: {future_viz_file}")
         else:
-            print("⚠ Warning: No future forecasts were generated")
+            print("(!) Warning: No future forecasts were generated")
     
     # ========================================================================
     # PIPELINE COMPLETION
@@ -434,13 +434,13 @@ def run_forecasting_pipeline(csv_path=CSV_PATH, target=TARGET,
 
     # Display best models
     if 'metrics_df' in locals() and not metrics_df.empty:
-        print("\n📊 Best Performing Models:")
+        print("\nBest Performing Models:")
         print("-" * 80)
         for metric in ['MAE', 'RMSE', 'MAPE']:
             if metric in metrics_df.columns:
                 best_model = metrics_df[metric].idxmin()
                 best_value = metrics_df[metric].min()
-                print(f"  • By {metric:4s}: {best_model:10s} = {best_value:.4f}")
+                print(f"  * By {metric:4s}: {best_model:10s} = {best_value:.4f}")
         print("=" * 80)
 
     return all_results

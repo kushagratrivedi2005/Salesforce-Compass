@@ -11,22 +11,23 @@ from datetime import datetime
 import pandas as pd
 
 # API base URL
-BASE_URL = "http://localhost:5000"
+BASE_URL = "http://127.0.0.1:5000"
 
-def make_request(endpoint, method="GET"):
+def make_request(endpoint, method="GET", payload=None):
     """
     Make a request to the API endpoint.
     
     Args:
         endpoint (str): API endpoint
         method (str): HTTP method
+        payload (dict): JSON payload for POST requests
         
     Returns:
         dict: JSON response or error message
     """
     try:
         url = f"{BASE_URL}{endpoint}"
-        response = requests.request(method, url)
+        response = requests.request(method, url, json=payload)
         
         if response.status_code == 200:
             return response.json()
@@ -206,6 +207,57 @@ def main():
     create_summary_report(responses)
     
     print(f"\n✅ Demo completed! Check the API documentation for more details.")
+
+    # --- Additional POST request demo for /predict endpoint ---
+    url = f"{BASE_URL}/predict"
+
+    # A dictionary containing all the parameters for the forecast
+    payload = {
+        "TARGET": "category_LIGHT PASSENGER VEHICLE",
+        "TEST_MONTHS": 6,
+        "FUTURE_FORECAST_MONTHS": 12,
+        "USE_TOP_K_EXOGS": True,
+        "CANDIDATE_EXOGS": [
+            'interest_rate', 
+            'repo_rate', 
+            'holiday_count', 
+            'major_national_holiday', 
+            'major_religious_holiday'
+        ],
+        "MANUAL_EXOGS": [
+            'interest_rate', 
+            'repo_rate'
+        ],
+        "TOP_K_EXOGS": 5
+    }
+
+    try:
+        # Send the POST request with the JSON payload
+        print(f"\nSending POST request to {url} with payload:")
+        print(json.dumps(payload, indent=4))
+        
+        response = requests.post(url, json=payload)
+
+        # Check if the request was successful
+        response.raise_for_status()
+
+        # Print the JSON response from the server
+        print("\nSuccessfully received response from server.")
+        print("--- Response ---")
+        print(json.dumps(response.json(), indent=4))
+
+    except requests.exceptions.HTTPError as http_err:
+        print(f"\nHTTP error occurred: {http_err}")
+        print(f"Status Code: {http_err.response.status_code}")
+        print("--- Error Response Content ---")
+        try:
+            # Try to parse and print JSON error response
+            print(json.dumps(http_err.response.json(), indent=4))
+        except json.JSONDecodeError:
+            # If response is not JSON, print as text
+            print(http_err.response.text)
+    except requests.exceptions.RequestException as e:
+        print(f"\nAn error occurred: {e}")
 
 if __name__ == "__main__":
     main()

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This Flask API server provides REST endpoints to access the output of the Vehicle Sales Forecasting System. The API serves predictions from multiple models (ARIMA, ETS, SARIMAX) along with performance metrics and comparative analysis.
+This Flask API server provides REST endpoints to dynamically run the Vehicle Sales Forecasting pipeline and retrieve the results. On each request to the `/predict` endpoint, the models are trained, and forecasts are generated based on the provided parameters.
 
 ## Base URL
 
@@ -16,361 +16,129 @@ http://localhost:5000
 
 **GET** `/health`
 
-Check if the API server is running.
+A simple endpoint to check if the API server is running and healthy. It can be used for monitoring services like JMeter.
 
-**Response:**
+**Response (200 OK):**
 ```json
 {
-  "status": "healthy",
-  "service": "Vehicle Sales Forecasting API",
-  "timestamp": "2024-09-07T12:00:00.000Z",
-  "version": "1.0.0"
+  "status": "healthy"
 }
 ```
 
-### 2. Get All Predictions
+### 2. Run Forecast and Get Predictions
 
-**GET** `/api/v1/predictions`
+**POST** `/predict`
 
-Retrieve predictions from all models including actual values.
+Triggers a complete run of the forecasting pipeline. It takes model and data parameters as a JSON payload, trains the models, generates forecasts, and returns the results.
 
-**Response:**
+**Request Body:**
+
+A JSON object specifying the parameters for the forecasting run.
+
+| Parameter                | Type             | Description                                                                                             | Default Value                                                                                             |
+| ------------------------ | ---------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `TARGET`                 | `string`         | The primary forecasting target column in the dataset.                                                   | `'category_LIGHT PASSENGER VEHICLE'`                                                                      |
+| `TEST_MONTHS`            | `integer`        | The number of months to use as a holdout set for testing model performance.                             | `6`                                                                                                       |
+| `FUTURE_FORECAST_MONTHS` | `integer`        | The number of months to forecast into the future.                                                       | `12`                                                                                                      |
+| `USE_TOP_K_EXOGS`        | `boolean`        | If `True`, the model will select the top-k most correlated exogenous variables from `CANDIDATE_EXOGS`. If `False`, it will use the variables specified in `MANUAL_EXOGS`. | `True`                                                                                                    |
+| `CANDIDATE_EXOGS`        | `array[string]`  | A list of potential exogenous variables to be considered for causal modeling if `USE_TOP_K_EXOGS` is `True`. | `['interest_rate', 'repo_rate', 'holiday_count', 'major_national_holiday', 'major_religious_holiday']`      |
+| `MANUAL_EXOGS`           | `array[string]`  | A specific list of exogenous variables to use if `USE_TOP_K_EXOGS` is `False`.                          | `['interest_rate', 'repo_rate']`                                                                          |
+| `TOP_K_EXOGS`            | `integer`        | The number of top correlated exogenous variables to select from the candidates.                         | `5`                                                                                                       |
+
+**Example Request Body:**
+
 ```json
 {
-  "models": ["ARIMA", "ETS", "SARIMAX", "Actual"],
-  "time_series": {
-    "ARIMA": [
-      {
-        "date": "2025-02-01T00:00:00.000Z",
-        "value": 2493234.06
-      }
+    "TARGET": "category_HEAVY COMMERCIAL VEHICLE",
+    "FUTURE_FORECAST_MONTHS": 6,
+    "USE_TOP_K_EXOGS": true,
+    "TOP_K_EXOGS": 3
+}
+```
+
+**Success Response (200 OK):**
+
+A JSON object containing two keys: `error` (containing model performance metrics) and `prediction` (containing future forecast values).
+
+**Example Success Response:**
+
+```json
+{
+    "error": [
+        {
+            "Model": "ARIMA",
+            "MAE": 3675.0181,
+            "RMSE": 4661.1094,
+            "MAPE": 12.0493
+        },
+        {
+            "Model": "ETS",
+            "MAE": 2877.9397,
+            "RMSE": 3289.4812,
+            "MAPE": 9.1877
+        },
+        {
+            "Model": "SARIMAX",
+            "MAE": 2824.5679,
+            "RMSE": 3307.7087,
+            "MAPE": 9.1430
+        }
     ],
-    "ETS": [...],
-    "SARIMAX": [...],
-    "Actual": [...]
-  },
-  "summary": {
-    "total_periods": 6,
-    "date_range": {
-      "start": "2025-02-01T00:00:00.000Z",
-      "end": "2025-07-01T00:00:00.000Z"
+    "prediction": {
+        "ARIMA": {
+            "2025-08-01": 34915.3021,
+            "2025-09-01": 32603.1849
+        },
+        "ETS": {
+            "2025-08-01": 34825.9830,
+            "2025-09-01": 33303.9296
+        },
+        "SARIMAX": {
+            "2025-08-01": 33677.7245,
+            "2025-09-01": 32454.3611
+        }
     }
-  },
-  "metadata": {
-    "timestamp": "2024-09-07T12:00:00.000Z",
-    "data_source": "Vehicle Sales Forecasting System"
-  }
-}
-```
-
-### 3. Get Model Metrics
-
-**GET** `/api/v1/metrics`
-
-Retrieve performance metrics for all models.
-
-**Response:**
-```json
-{
-  "models": {
-    "ARIMA": {
-      "MAE": 566629.68,
-      "RMSE": 598919.48,
-      "MAPE": 27.48
-    },
-    "ETS": {
-      "MAE": 239096.41,
-      "RMSE": 256084.04,
-      "MAPE": 11.65
-    },
-    "SARIMAX": {
-      "MAE": 191619.02,
-      "RMSE": 240478.82,
-      "MAPE": 9.16
-    }
-  },
-  "best_performing": {
-    "MAE": {
-      "model": "SARIMAX",
-      "value": 191619.02
-    },
-    "RMSE": {
-      "model": "SARIMAX",
-      "value": 240478.82
-    },
-    "MAPE": {
-      "model": "SARIMAX",
-      "value": 9.16
-    }
-  },
-  "model_count": 3,
-  "metadata": {
-    "timestamp": "2024-09-07T12:00:00.000Z",
-    "metrics_description": {
-      "MAE": "Mean Absolute Error",
-      "RMSE": "Root Mean Square Error",
-      "MAPE": "Mean Absolute Percentage Error (%)"
-    }
-  }
-}
-```
-
-### 4. Get Models Information
-
-**GET** `/api/v1/models`
-
-Retrieve information about available models.
-
-**Response:**
-```json
-{
-  "models": {
-    "ARIMA": {
-      "name": "ARIMA",
-      "type": "Time Series",
-      "description": "AutoRegressive Integrated Moving Average model for time series forecasting",
-      "available": true,
-      "metrics": {
-        "MAE": 566629.68,
-        "RMSE": 598919.48,
-        "MAPE": 27.48
-      }
-    },
-    "ETS": {
-      "name": "ETS",
-      "type": "Exponential Smoothing",
-      "description": "Exponential Smoothing (Holt-Winters) model with trend and seasonality",
-      "available": true,
-      "metrics": {
-        "MAE": 239096.41,
-        "RMSE": 256084.04,
-        "MAPE": 11.65
-      }
-    },
-    "SARIMAX": {
-      "name": "SARIMAX",
-      "type": "Causal Time Series",
-      "description": "Seasonal ARIMA with eXogenous variables including economic indicators and policy factors",
-      "available": true,
-      "metrics": {
-        "MAE": 191619.02,
-        "RMSE": 240478.82,
-        "MAPE": 9.16
-      }
-    }
-  },
-  "total_models": 3,
-  "metadata": {
-    "timestamp": "2024-09-07T12:00:00.000Z",
-    "forecast_period": {
-      "start": "2025-02-01T00:00:00.000Z",
-      "end": "2025-07-01T00:00:00.000Z",
-      "periods": 6
-    }
-  }
-}
-```
-
-### 5. Get Specific Model Forecast
-
-**GET** `/api/v1/forecast/{model_name}`
-
-Retrieve forecast data for a specific model.
-
-**Parameters:**
-- `model_name` (string): Model name (ARIMA, ETS, or SARIMAX)
-
-**Example:** `/api/v1/forecast/SARIMAX`
-
-**Response:**
-```json
-{
-  "model": {
-    "name": "SARIMAX",
-    "type": "Causal Time Series",
-    "description": "Seasonal ARIMA with eXogenous variables including economic indicators and policy factors"
-  },
-  "forecast": [
-    {
-      "date": "2025-02-01T00:00:00.000Z",
-      "forecast": 1914565.81,
-      "actual": 1923300.0
-    },
-    {
-      "date": "2025-03-01T00:00:00.000Z",
-      "forecast": 2179116.62,
-      "actual": 2155581.0
-    }
-  ],
-  "metrics": {
-    "MAE": 191619.02,
-    "RMSE": 240478.82,
-    "MAPE": 9.16
-  },
-  "summary": {
-    "total_periods": 6,
-    "date_range": {
-      "start": "2025-02-01T00:00:00.000Z",
-      "end": "2025-07-01T00:00:00.000Z"
-    }
-  },
-  "metadata": {
-    "timestamp": "2024-09-07T12:00:00.000Z"
-  }
-}
-```
-
-### 6. Get Model Comparison
-
-**GET** `/api/v1/comparison`
-
-Retrieve comparative analysis of all models.
-
-**Response:**
-```json
-{
-  "comparison": [
-    {
-      "date": "2025-02-01T00:00:00.000Z",
-      "actual": 1923300.0,
-      "ARIMA": 2493234.06,
-      "ETS": 2275123.78,
-      "SARIMAX": 1914565.81
-    }
-  ],
-  "model_rankings": {
-    "MAE": [
-      {
-        "rank": 1,
-        "model": "SARIMAX",
-        "value": 191619.02
-      },
-      {
-        "rank": 2,
-        "model": "ETS",
-        "value": 239096.41
-      },
-      {
-        "rank": 3,
-        "model": "ARIMA",
-        "value": 566629.68
-      }
-    ],
-    "RMSE": [...],
-    "MAPE": [...]
-  },
-  "summary": {
-    "models_compared": 3,
-    "time_periods": 6,
-    "best_overall": "SARIMAX"
-  },
-  "metadata": {
-    "timestamp": "2024-09-07T12:00:00.000Z",
-    "ranking_criteria": "Lower values indicate better performance"
-  }
 }
 ```
 
 ## Error Responses
 
-All endpoints return standardized error responses in case of failures:
+In case of an error (e.g., pipeline failure, invalid input), the API will return a JSON response with an error message and a corresponding HTTP status code.
 
+**Example Error Response (500 Internal Server Error):**
 ```json
 {
-  "error": true,
-  "message": "Error description",
-  "timestamp": "2024-09-07T12:00:00.000Z",
-  "status_code": 500
+    "error": "Pipeline execution failed.",
+    "command": ["python", "main_pipeline.py", "--config", "temp_config.py"],
+    "stdout": "...",
+    "stderr": "..."
 }
 ```
 
-**Common HTTP Status Codes:**
-- `200` - Success
-- `404` - Not Found (invalid endpoint or model name)
-- `500` - Internal Server Error
-- `503` - Service Unavailable (forecast data not available)
-
-## Setup Instructions
+## Setup and Deployment
 
 ### 1. Install Dependencies
 
+Ensure all required Python packages are installed:
 ```bash
 pip install -r requirements_api.txt
 ```
 
-### 2. Generate Forecast Data
+### 2. Start the API Server
 
-Before starting the API server, run the forecasting pipeline to generate the required data:
-
-```bash
-cd Code
-python main_pipeline.py
-```
-
-This will create the following files:
-- `forecast_results/forecast_predictions.csv`
-- `forecast_results/forecast_metrics.csv`
-
-### 3. Start the API Server
-
+To run the server in a development environment:
 ```bash
 cd Code
 python app.py
 ```
+The server will be accessible at `http://localhost:5000`.
 
-The server will start on `http://localhost:5000`
+### 3. Production Deployment
 
-### 4. Test the API
+For production, it is recommended to use a WSGI server like Gunicorn. A `Procfile` is included for easy deployment on platforms like Heroku.
 
-You can test the API using curl, Postman, or any HTTP client:
-
+To run with Gunicorn locally:
 ```bash
-# Health check
-curl http://localhost:5000/health
-
-# Get all predictions
-curl http://localhost:5000/api/v1/predictions
-
-# Get metrics
-curl http://localhost:5000/api/v1/metrics
-
-# Get specific model forecast
-curl http://localhost:5000/api/v1/forecast/SARIMAX
+gunicorn Code.app:app
 ```
-
-## Production Deployment
-
-For production deployment, use a WSGI server like Gunicorn:
-
-```bash
-# Install gunicorn
-pip install gunicorn
-
-# Run with gunicorn
-gunicorn -w 4 -b 0.0.0.0:5000 app:app
-```
-
-## CORS Support
-
-The API includes CORS (Cross-Origin Resource Sharing) support, allowing web applications from different domains to access the API.
-
-## Data Format
-
-- All dates are returned in ISO 8601 format (UTC)
-- Numerical values are returned as floats
-- Missing values are represented as `null`
-- Timestamps indicate when the response was generated
-
-## Rate Limiting
-
-Currently, no rate limiting is implemented. For production use, consider adding rate limiting middleware.
-
-## Security Considerations
-
-For production deployment:
-1. Add authentication/authorization
-2. Implement rate limiting
-3. Add input validation
-4. Use HTTPS
-5. Add request logging
-6. Implement proper error handling without exposing internal details
+This will start the server, typically on port `8000`.
