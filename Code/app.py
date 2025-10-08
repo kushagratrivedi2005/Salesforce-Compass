@@ -1,11 +1,14 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import subprocess
 import pandas as pd
 import os
 import tempfile
 import json
+import base64
 
 app = Flask(__name__)
+CORS(app)
 
 # Get the absolute path of the project root
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -37,6 +40,7 @@ def predict():
     ])
     manual_exogs = data.get('MANUAL_EXOGS', ['interest_rate', 'repo_rate'])
     top_k_exogs = data.get('TOP_K_EXOGS', 5)
+    start_date = data.get('START_DATE', None)  # Get start date from request
 
     # --- Create a temporary config file ---
     config_content = f"""
@@ -118,10 +122,28 @@ PLOT_CONFIG = {{
         metrics_df = pd.read_csv(metrics_path)
         predictions_df = pd.read_csv(predictions_path)
 
+        # Get all visualization files
+        viz_dir = os.path.join(results_dir, 'visualizations')
+        viz_data = {}
+        
+        if os.path.exists(viz_dir):
+            for viz_file in os.listdir(viz_dir):
+                if viz_file.endswith('.png'):
+                    viz_path = os.path.join(viz_dir, viz_file)
+                    try:
+                        with open(viz_path, 'rb') as img_file:
+                            viz_data[viz_file] = base64.b64encode(img_file.read()).decode('utf-8')
+                    except Exception as e:
+                        print(f"Error reading visualization file {viz_file}: {str(e)}")
+        
+        if not viz_data:
+            print("No visualization files found in:", viz_dir)
+
         # Format the response as requested
         response = {
             "error": metrics_df.rename(columns={'Unnamed: 0': 'Model'}).to_dict(orient='records'),
-            "prediction": predictions_df.rename(columns={'Unnamed: 0': 'Date'}).set_index('Date').to_dict()
+            "prediction": predictions_df.rename(columns={'Unnamed: 0': 'Date'}).set_index('Date').to_dict(),
+            "visualization": viz_data
         }
         
         return jsonify(response)

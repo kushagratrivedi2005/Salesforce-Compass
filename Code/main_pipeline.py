@@ -31,11 +31,34 @@ warnings.filterwarnings("ignore", message="No frequency information")
 warnings.filterwarnings("ignore", message="Optimization failed to converge")
 
 # Import configuration
-from config import (
-    CSV_PATH, RESULTS_DIR, TARGET,
-    DATASET_DIR, FUTURE_FORECAST_MONTHS, USE_TOP_K_EXOGS,
-    CANDIDATE_EXOGS, MANUAL_EXOGS, TOP_K_EXOGS
-)
+import sys
+import importlib.util
+
+if len(sys.argv) > 2 and sys.argv[1] == '--config':
+    # Load the specified config file
+    config_path = sys.argv[2]
+    spec = importlib.util.spec_from_file_location("config", config_path)
+    config = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(config)
+    
+    # Get configuration from the loaded module
+    CSV_PATH = config.CSV_PATH
+    RESULTS_DIR = config.RESULTS_DIR
+    TARGET = config.TARGET
+    DATASET_DIR = config.DATASET_DIR
+    FUTURE_FORECAST_MONTHS = config.FUTURE_FORECAST_MONTHS
+    USE_TOP_K_EXOGS = config.USE_TOP_K_EXOGS
+    CANDIDATE_EXOGS = config.CANDIDATE_EXOGS
+    MANUAL_EXOGS = config.MANUAL_EXOGS
+    TOP_K_EXOGS = config.TOP_K_EXOGS
+    TEST_MONTHS = config.TEST_MONTHS  # Add TEST_MONTHS
+else:
+    # Fall back to default config if no config file specified
+    from config import (
+        CSV_PATH, RESULTS_DIR, TARGET,
+        DATASET_DIR, FUTURE_FORECAST_MONTHS, USE_TOP_K_EXOGS,
+        CANDIDATE_EXOGS, MANUAL_EXOGS, TOP_K_EXOGS
+    )
 
 
 # ============================================================================
@@ -67,9 +90,12 @@ def generate_future_forecast(model_results, full_history, future_periods, exog_d
     """
     print_section_header(f"Generating Future Forecasts for {future_periods} Months")
     
-    # Create future date range starting from the day after the last historical data point
+    # Start future forecasts from the current month
+    current_date = pd.Timestamp.now().normalize()
+    forecast_start = pd.Timestamp(year=current_date.year, month=current_date.month, day=1)
+    
     future_dates = pd.date_range(
-        start=full_history.index.max() + pd.DateOffset(months=1),
+        start=forecast_start,
         periods=future_periods,
         freq='MS'
     )
@@ -231,8 +257,15 @@ def run_forecasting_pipeline(csv_path=CSV_PATH, target=TARGET,
         print(f"(+) Handled {n_outliers} outliers in target variable")
         target_series = target_series_clean
     
-    train_end_date = '2025-01-01'
-    test_end_date = '2025-07-01'
+    # Fixed test end date at September 2025
+    test_end_date = '2025-09-01'
+    
+    # Calculate train end date based on test_months parameter
+    test_start = pd.Timestamp(test_end_date) - pd.DateOffset(months=TEST_MONTHS)
+    train_end_date = test_start.strftime('%Y-%m-%d')
+    
+    print(f"-> Training period ends at: {train_end_date}")
+    print(f"-> Testing period: {train_end_date} to {test_end_date} ({TEST_MONTHS} months)")
     
     train_data, test_data = train_test_split_by_date(
         target_series,
@@ -330,8 +363,15 @@ def run_forecasting_pipeline(csv_path=CSV_PATH, target=TARGET,
     ensure_dir(viz_dir)
     
     if all_results['predictions']:
-        create_forecast_dashboard(all_results, target, save_dir=viz_dir)
-        print(f"(+) Visualizations saved to: {viz_dir}")
+        try:
+            create_forecast_dashboard(all_results, target, save_dir=viz_dir)
+            print(f"(+) Visualizations saved to: {viz_dir}")
+            # List created visualizations
+            if os.path.exists(viz_dir):
+                viz_files = [f for f in os.listdir(viz_dir) if f.endswith('.png')]
+                print(f"(+) Created visualizations: {', '.join(viz_files)}")
+        except Exception as e:
+            print(f"(!) Warning: Error creating visualizations: {str(e)}")
     else:
         print("(!) Warning: No predictions available for visualization")
     

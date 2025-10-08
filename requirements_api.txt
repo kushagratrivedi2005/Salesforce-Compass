@@ -22,6 +22,7 @@ matplotlib>=3.10.0
 python-dateutil==2.8.2
 pytz==2023.3
 setuptools>=65.0.0
+requests
 
 # Development and testing
 pytest==7.4.3
