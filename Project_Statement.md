@@ -34,6 +34,3 @@ Define how success will be measured and what constitutes project completion:
 - Forecasting model achieves MAPE < 10% on holdout test set across the majority of regions
 - Clear causal insights—e.g., how much fuel price change impacts SUV sales in specific zones
 - Acceptance of model findings by mock stakeholders (e.g., Salesforce architects, mentors)
-
-Thanks,  
-Dhaval

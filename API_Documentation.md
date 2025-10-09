@@ -117,14 +117,30 @@ In case of an error (e.g., pipeline failure, invalid input), the API will return
 
 ## Setup and Deployment
 
-### 1. Install Dependencies
+### 1. Create and Activate Virtual Environment
+
+It is recommended to use a virtual environment to isolate project dependencies:
+
+**On Linux/macOS:**
+```bash
+python3 -m venv env
+source env/bin/activate
+```
+
+**On Windows:**
+```bash
+python -m venv env
+env\Scripts\activate
+```
+
+### 2. Install Dependencies
 
 Ensure all required Python packages are installed:
 ```bash
 pip install -r requirements_api.txt
 ```
 
-### 2. Start the API Server
+### 3. Start the API Server
 
 To run the server in a development environment:
 ```bash
@@ -133,7 +149,7 @@ python app.py
 ```
 The server will be accessible at `http://localhost:5000`.
 
-### 3. Production Deployment
+### 4. Production Deployment
 
 For production, it is recommended to use a WSGI server like Gunicorn. A `Procfile` is included for easy deployment on platforms like Heroku.
 

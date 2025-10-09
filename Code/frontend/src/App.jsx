@@ -142,51 +142,55 @@ function App() {
 
   return (
     <div className="container">
-      <h2 style={{ textAlign: 'center', fontSize: '2.5rem', color: 'var(--primary-color)' }}>
+      <h2 style={{ textAlign: 'center', fontSize: '2.5rem' }}>
         Vehicle Sales Forecasting
       </h2>
+      <p className="subtitle">Advanced Time Series Prediction System</p>
+      
       <form onSubmit={handleSubmit} className="form-card">
-        <div className="form-group">
-          <label htmlFor="target">Target Category</label>
-          <select
-            id="target"
-            name="TARGET"
-            value={form.TARGET}
-            onChange={handleChange}
-            required
-          >
-            {TARGET_OPTIONS.map(opt => (
-              <option key={opt} value={opt}>{opt}</option>
-            ))}
-          </select>
-        </div>
+        <div className="form-grid">
+          <div className="form-group">
+            <label htmlFor="target">Target Category</label>
+            <select
+              id="target"
+              name="TARGET"
+              value={form.TARGET}
+              onChange={handleChange}
+              required
+            >
+              {TARGET_OPTIONS.map(opt => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+          </div>
 
-        <div className="form-group">
-          <label htmlFor="test-months">Test Months</label>
-          <input
-            id="test-months"
-            type="number"
-            name="TEST_MONTHS"
-            min={3}
-            max={9}
-            value={form.TEST_MONTHS}
-            onChange={handleChange}
-            required
-          />
-        </div>
+          <div className="form-group">
+            <label htmlFor="test-months">Test Months (3-9)</label>
+            <input
+              id="test-months"
+              type="number"
+              name="TEST_MONTHS"
+              min={3}
+              max={9}
+              value={form.TEST_MONTHS}
+              onChange={handleChange}
+              required
+            />
+          </div>
 
-        <div className="form-group">
-          <label htmlFor="forecast-months">Future Forecast Months</label>
-          <input
-            id="forecast-months"
-            type="number"
-            name="FUTURE_FORECAST_MONTHS"
-            min={6}
-            max={60}
-            value={form.FUTURE_FORECAST_MONTHS}
-            onChange={handleChange}
-            required
-          />
+          <div className="form-group">
+            <label htmlFor="forecast-months">Future Forecast Months (6-60)</label>
+            <input
+              id="forecast-months"
+              type="number"
+              name="FUTURE_FORECAST_MONTHS"
+              min={6}
+              max={60}
+              value={form.FUTURE_FORECAST_MONTHS}
+              onChange={handleChange}
+              required
+            />
+          </div>
         </div>
 
         <div className="form-group">
@@ -224,7 +228,7 @@ function App() {
             </div>
 
             <div className="form-group">
-              <label htmlFor="top-k">Top-K Exogs</label>
+              <label htmlFor="top-k">Top-K Exogenous Variables</label>
               <input
                 id="top-k"
                 type="number"
@@ -259,42 +263,104 @@ function App() {
         )}
 
         <button type="submit" disabled={loading}>
-          {loading ? 'Predicting...' : 'Predict'}
+          {loading ? (
+            <>
+              <span className="loading-spinner"></span> Generating Forecast...
+            </>
+          ) : (
+            'Generate Forecast'
+          )}
         </button>
       </form>
 
       {error && (
         <div className="error-message">
-          <b>Error:</b> {typeof error === 'string' ? error : JSON.stringify(error)}
+          <strong>Error:</strong> {typeof error === 'string' ? error : JSON.stringify(error)}
         </div>
       )}
 
       {result && (
         <div className="results-card">
-          <h3>Results</h3>
-          <div>
-            {result.visualization && Object.keys(result.visualization).length > 0 && (
+          <h3>Forecast Results</h3>
+          
+          <h4>Model Performance Metrics</h4>
+          <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+            Based on test data up to September 2025
+          </p>
+          {result.error && Array.isArray(result.error) && (
+            <table className="metrics-table">
+              <thead>
+                <tr>
+                  <th>Model</th>
+                  <th>MAE</th>
+                  <th>RMSE</th>
+                  <th>MAPE (%)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {result.error.map((row, idx) => (
+                  <tr key={idx}>
+                    <td><strong>{row.Model}</strong></td>
+                    <td className="number-cell">{row.MAE?.toFixed(2)}</td>
+                    <td className="number-cell">{row.RMSE?.toFixed(2)}</td>
+                    <td className="number-cell">{row.MAPE?.toFixed(2)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          
+          <div className="section-divider"></div>
+          
+          <h4>Future Forecasts</h4>
+          <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+            Starting from {formatDate(getCurrentMonthStart())}
+          </p>
+          {result.prediction && (
+            <div style={{ overflowX: 'auto' }}>
+              <table className="prediction-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    {Object.keys(result.prediction).map(model => (
+                      <th key={model}>{model}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.keys(Object.values(result.prediction)[0] || {}).map(date => (
+                    <tr key={date}>
+                      <td><strong>{date}</strong></td>
+                      {Object.keys(result.prediction).map(model => (
+                        <td key={model} className="number-cell">
+                          {result.prediction[model][date]?.toFixed(2)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          
+          {result.visualization && Object.keys(result.visualization).length > 0 && (
+            <>
+              <div className="section-divider"></div>
+              <h4>Forecast Visualizations</h4>
               <div className="visualization-container">
-                <h4>Forecast Visualizations</h4>
                 {Object.entries(result.visualization).map(([filename, base64Data]) => (
                   <div key={filename} style={{ marginBottom: '2rem' }}>
-                    <h5>{filename.replace('.png', '').replace(/_/g, ' ')}</h5>
+                    <h5>{filename.replace('.png', '').replace(/_/g, ' ').toUpperCase()}</h5>
                     <img 
                       src={`data:image/png;base64,${base64Data}`}
                       alt={filename}
-                      style={{ maxWidth: '100%', height: 'auto', marginBottom: '1rem' }}
+                      style={{ maxWidth: '100%', height: 'auto', display: 'block', margin: '0 auto' }}
                     />
                   </div>
                 ))}
               </div>
-            )}
-            
-            <h4>Model Performance Metrics (Based on Test Data till September 2025)</h4>
-            <pre>{JSON.stringify(result.error, null, 2)}</pre>
-            
-            <h4>Future Forecasts (Starting from {formatDate(getCurrentMonthStart())})</h4>
-            <pre>{JSON.stringify(result.prediction, null, 2)}</pre>
-          </div>
+            </>
+          )}
         </div>
       )}
     </div>
