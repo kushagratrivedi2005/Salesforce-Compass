@@ -28,6 +28,16 @@ const CANDIDATE_EXOGS_OPTIONS = [
   'holiday_count',
   'major_national_holiday',
   'major_religious_holiday',
+  'sub_4m_rule',
+  'bs3_norms',
+  'bs4_norms',
+  'bs6_norms',
+  'fame_i',
+  'fame_ii',
+  'fame_iii',
+  'pli_scheme',
+  'vehicle_scrappage_policy',
+  'bharat_ncap',
 ];
 const MANUAL_EXOGS_OPTIONS = [
   'interest_rate',
@@ -47,6 +57,8 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [candidateSearchTerm, setCandidateSearchTerm] = useState('');
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -133,10 +145,26 @@ function App() {
       }
       
       setResult(data);
+      setCurrentImageIndex(0); // Reset to first image when new results arrive
     } catch (err) {
       setError('Network or server error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Gallery navigation functions
+  const nextImage = () => {
+    if (result && result.visualization) {
+      const totalImages = Object.keys(result.visualization).length;
+      setCurrentImageIndex((prev) => (prev + 1) % totalImages);
+    }
+  };
+
+  const prevImage = () => {
+    if (result && result.visualization) {
+      const totalImages = Object.keys(result.visualization).length;
+      setCurrentImageIndex((prev) => (prev - 1 + totalImages) % totalImages);
     }
   };
 
@@ -210,20 +238,61 @@ function App() {
           <>
             <div className="form-group">
               <label>Candidate Exogenous Variables</label>
+              <input
+                type="text"
+                className="search-input"
+                placeholder="Search variables..."
+                value={candidateSearchTerm}
+                onChange={(e) => setCandidateSearchTerm(e.target.value)}
+              />
+              <div style={{ marginBottom: '0.5rem' }}>
+                <button
+                  type="button"
+                  className="select-all-btn"
+                  onClick={() => {
+                    const filteredOptions = CANDIDATE_EXOGS_OPTIONS.filter(opt => 
+                      opt.toLowerCase().includes(candidateSearchTerm.toLowerCase())
+                    );
+                    setForm(prev => ({
+                      ...prev,
+                      CANDIDATE_EXOGS: filteredOptions
+                    }));
+                  }}
+                >
+                  Select All
+                </button>
+                <button
+                  type="button"
+                  className="select-all-btn"
+                  onClick={() => {
+                    setForm(prev => ({
+                      ...prev,
+                      CANDIDATE_EXOGS: []
+                    }));
+                  }}
+                  style={{ marginLeft: '0.5rem' }}
+                >
+                  Clear All
+                </button>
+              </div>
               <div className="checkbox-group">
-                {CANDIDATE_EXOGS_OPTIONS.map(opt => (
-                  <label key={opt} className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      name="CANDIDATE_EXOGS"
-                      value={opt}
-                      checked={form.CANDIDATE_EXOGS.includes(opt)}
-                      onChange={handleChange}
-                      style={{ width: 'auto' }}
-                    />
-                    {opt}
-                  </label>
-                ))}
+                {CANDIDATE_EXOGS_OPTIONS
+                  .filter(opt => 
+                    opt.toLowerCase().includes(candidateSearchTerm.toLowerCase())
+                  )
+                  .map(opt => (
+                    <label key={opt} className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        name="CANDIDATE_EXOGS"
+                        value={opt}
+                        checked={form.CANDIDATE_EXOGS.includes(opt)}
+                        onChange={handleChange}
+                        style={{ width: 'auto' }}
+                      />
+                      {opt}
+                    </label>
+                  ))}
               </div>
             </div>
 
@@ -347,17 +416,64 @@ function App() {
             <>
               <div className="section-divider"></div>
               <h4>Forecast Visualizations</h4>
-              <div className="visualization-container">
-                {Object.entries(result.visualization).map(([filename, base64Data]) => (
-                  <div key={filename} style={{ marginBottom: '2rem' }}>
-                    <h5>{filename.replace('.png', '').replace(/_/g, ' ').toUpperCase()}</h5>
-                    <img 
-                      src={`data:image/png;base64,${base64Data}`}
-                      alt={filename}
-                      style={{ maxWidth: '100%', height: 'auto', display: 'block', margin: '0 auto' }}
-                    />
-                  </div>
-                ))}
+              <div className="gallery-container">
+                {(() => {
+                  const visualizations = Object.entries(result.visualization);
+                  const [filename, base64Data] = visualizations[currentImageIndex];
+                  const totalImages = visualizations.length;
+                  
+                  return (
+                    <>
+                      <div className="gallery-header">
+                        <h5>{filename.replace('.png', '').replace(/_/g, ' ').toUpperCase()}</h5>
+                        <span className="gallery-counter">
+                          {currentImageIndex + 1} / {totalImages}
+                        </span>
+                      </div>
+                      
+                      <div className="gallery-content">
+                        <button 
+                          className="gallery-nav gallery-nav-left" 
+                          onClick={prevImage}
+                          disabled={totalImages <= 1}
+                          aria-label="Previous image"
+                        >
+                          ‹
+                        </button>
+                        
+                        <div className="gallery-image-wrapper">
+                          <img 
+                            src={`data:image/png;base64,${base64Data}`}
+                            alt={filename}
+                            className="gallery-image"
+                          />
+                        </div>
+                        
+                        <button 
+                          className="gallery-nav gallery-nav-right" 
+                          onClick={nextImage}
+                          disabled={totalImages <= 1}
+                          aria-label="Next image"
+                        >
+                          ›
+                        </button>
+                      </div>
+                      
+                      {totalImages > 1 && (
+                        <div className="gallery-indicators">
+                          {visualizations.map((_, idx) => (
+                            <button
+                              key={idx}
+                              className={`gallery-dot ${idx === currentImageIndex ? 'active' : ''}`}
+                              onClick={() => setCurrentImageIndex(idx)}
+                              aria-label={`Go to image ${idx + 1}`}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             </>
           )}
