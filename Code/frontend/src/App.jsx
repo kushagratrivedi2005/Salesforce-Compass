@@ -147,7 +147,8 @@ function App() {
       setResult(data);
       setCurrentImageIndex(0); // Reset to first image when new results arrive
     } catch (err) {
-      setError('Network or server error');
+      console.error('Error details:', err);
+      setError(`Network or server error: ${err.message}`);
     } finally {
       setLoading(false);
     }

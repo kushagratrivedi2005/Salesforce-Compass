@@ -106,6 +106,12 @@ PLOT_CONFIG = {{
         cwd = os.path.dirname(__file__)
         
         process = subprocess.run(cmd, capture_output=True, text=True, check=True, cwd=cwd)
+        
+        # Log subprocess output (not returned to client to avoid JSON corruption)
+        if process.stdout:
+            app.logger.info(f"Pipeline stdout: {process.stdout}")
+        if process.stderr:
+            app.logger.warning(f"Pipeline stderr: {process.stderr}")
 
         # --- Read and return the results ---
         results_dir = os.path.join(project_root, 'forecast_results')
@@ -114,13 +120,15 @@ PLOT_CONFIG = {{
 
         if not os.path.exists(metrics_path) or not os.path.exists(predictions_path):
             return jsonify({
-                "error": "Pipeline ran, but result files were not generated.",
-                "stdout": process.stdout,
-                "stderr": process.stderr
+                "error": "Pipeline ran, but result files were not generated."
             }), 500
 
         metrics_df = pd.read_csv(metrics_path)
         predictions_df = pd.read_csv(predictions_path)
+        
+        # Replace NaN, Infinity, and -Infinity with None for valid JSON
+        metrics_df = metrics_df.replace([float('nan'), float('inf'), float('-inf')], None)
+        predictions_df = predictions_df.replace([float('nan'), float('inf'), float('-inf')], None)
 
         # Get all visualization files
         viz_dir = os.path.join(results_dir, 'visualizations')
@@ -134,14 +142,14 @@ PLOT_CONFIG = {{
                         with open(viz_path, 'rb') as img_file:
                             viz_data[viz_file] = base64.b64encode(img_file.read()).decode('utf-8')
                     except Exception as e:
-                        print(f"Error reading visualization file {viz_file}: {str(e)}")
+                        app.logger.error(f"Error reading visualization file {viz_file}: {str(e)}")
         
         if not viz_data:
-            print("No visualization files found in:", viz_dir)
+            app.logger.warning(f"No visualization files found in: {viz_dir}")
 
         # Format the response as requested
         response = {
-            "error": metrics_df.rename(columns={'Unnamed: 0': 'Model'}).to_dict(orient='records'),
+            "metrics": metrics_df.rename(columns={'Unnamed: 0': 'Model'}).to_dict(orient='records'),
             "prediction": predictions_df.rename(columns={'Unnamed: 0': 'Date'}).set_index('Date').to_dict(),
             "visualization": viz_data
         }
