@@ -433,11 +433,7 @@ def run_forecasting_pipeline(csv_path=CSV_PATH, target=TARGET,
             
             plt.figure(figsize=(14, 7))
             
-            # Plot historical data
-            plt.plot(full_history.index, full_history.values, 
-                    label='Historical Data', color='black', linewidth=2, alpha=0.7)
-            
-            # Plot future forecasts for each model
+            # Plot future forecasts for each model (no historical data)
             colors = {'ARIMA': 'blue', 'ETS': 'green', 'SARIMAX': 'red'}
             for model_name, forecast_data in future_forecasts.items():
                 forecast = forecast_data['forecast']

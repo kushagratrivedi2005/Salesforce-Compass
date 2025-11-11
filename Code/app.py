@@ -149,7 +149,7 @@ PLOT_CONFIG = {{
 
         # Format the response as requested
         response = {
-            "metrics": metrics_df.rename(columns={'Unnamed: 0': 'Model'}).to_dict(orient='records'),
+            "error": metrics_df.rename(columns={'Unnamed: 0': 'Model'}).to_dict(orient='records'),
             "prediction": predictions_df.rename(columns={'Unnamed: 0': 'Date'}).set_index('Date').to_dict(),
             "visualization": viz_data
         }

@@ -32,11 +32,6 @@ def plot_forecast(train_data, test_data, predictions, confidence_intervals=None,
     """
     plt.figure(figsize=PLOT_CONFIG['figsize'])
     
-    # Plot training data
-    plt.plot(train_data.index, train_data.values, 
-            label='Training Data', marker=PLOT_CONFIG['marker'], 
-            color='blue', alpha=0.7)
-    
     # Plot actual test data
     plt.plot(test_data.index, test_data.values, 
             label='Actual (Test)', marker=PLOT_CONFIG['marker'], 
