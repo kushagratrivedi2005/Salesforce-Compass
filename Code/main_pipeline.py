@@ -52,6 +52,7 @@ if len(sys.argv) > 2 and sys.argv[1] == '--config':
     MANUAL_EXOGS = config.MANUAL_EXOGS
     TOP_K_EXOGS = config.TOP_K_EXOGS
     TEST_MONTHS = config.TEST_MONTHS  # Add TEST_MONTHS
+    VISUALIZATION_YEARS = getattr(config, 'VISUALIZATION_YEARS', None)
 else:
     # Fall back to default config if no config file specified
     from config import (
@@ -364,7 +365,7 @@ def run_forecasting_pipeline(csv_path=CSV_PATH, target=TARGET,
     
     if all_results['predictions']:
         try:
-            create_forecast_dashboard(all_results, target, save_dir=viz_dir)
+            create_forecast_dashboard(all_results, target, save_dir=viz_dir, visualization_years=VISUALIZATION_YEARS)
             print(f"(+) Visualizations saved to: {viz_dir}")
             # List created visualizations
             if os.path.exists(viz_dir):
@@ -433,7 +434,14 @@ def run_forecasting_pipeline(csv_path=CSV_PATH, target=TARGET,
             
             plt.figure(figsize=(14, 7))
             
-            # Plot future forecasts for each model (no historical data)
+            # Optionally show historical data based on VISUALIZATION_YEARS
+            if VISUALIZATION_YEARS:
+                months_to_show = VISUALIZATION_YEARS * 12
+                recent_history = full_history.iloc[-months_to_show:] if len(full_history) > months_to_show else full_history
+                plt.plot(recent_history.index, recent_history.values, 
+                        label='Historical Data', color='black', linewidth=2, alpha=0.7)
+            
+            # Plot future forecasts for each model
             colors = {'ARIMA': 'blue', 'ETS': 'green', 'SARIMAX': 'red'}
             for model_name, forecast_data in future_forecasts.items():
                 forecast = forecast_data['forecast']

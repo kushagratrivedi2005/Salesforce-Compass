@@ -16,7 +16,7 @@ from config import PLOT_CONFIG
 
 
 def plot_forecast(train_data, test_data, predictions, confidence_intervals=None,
-                 title='Forecast', ylabel='Value', save_path=None, show_plot=True):
+                 title='Forecast', ylabel='Value', save_path=None, show_plot=True, visualization_years=None):
     """
     Plot time series forecast with actual vs predicted values.
     
@@ -29,8 +29,19 @@ def plot_forecast(train_data, test_data, predictions, confidence_intervals=None,
         ylabel (str): Y-axis label
         save_path (str): Path to save plot (optional)
         show_plot (bool): Whether to display plot
+        visualization_years (int): Number of years of historical data to show (optional)
     """
     plt.figure(figsize=PLOT_CONFIG['figsize'])
+    
+    # Filter training data based on visualization_years if specified
+    if visualization_years and train_data is not None and len(train_data) > 0:
+        months_to_show = visualization_years * 12
+        recent_train_data = train_data.iloc[-months_to_show:] if len(train_data) > months_to_show else train_data
+        
+        # Plot recent training data
+        plt.plot(recent_train_data.index, recent_train_data.values, 
+                label='Historical Data', marker=PLOT_CONFIG['marker'], 
+                color='blue', alpha=0.7, linewidth=1.5)
     
     # Plot actual test data
     plt.plot(test_data.index, test_data.values, 
@@ -278,7 +289,7 @@ def plot_exog_coefficients(coefficients_dict, title='Exogenous Variable Coeffici
         plt.close()
 
 
-def create_forecast_dashboard(results_dict, target_name, save_dir=None):
+def create_forecast_dashboard(results_dict, target_name, save_dir=None, visualization_years=None):
     """
     Create a comprehensive dashboard with all forecast visualizations.
     
@@ -286,6 +297,7 @@ def create_forecast_dashboard(results_dict, target_name, save_dir=None):
         results_dict (dict): Complete results from model training
         target_name (str): Name of target variable
         save_dir (str): Directory to save plots
+        visualization_years (int): Number of years of historical data to show (optional)
     """
     if save_dir:
         os.makedirs(save_dir, exist_ok=True)
@@ -307,7 +319,8 @@ def create_forecast_dashboard(results_dict, target_name, save_dir=None):
                     title=f'{model_name} Forecast - {target_name}',
                     ylabel=target_name,
                     save_path=save_path,
-                    show_plot=False
+                    show_plot=False,
+                    visualization_years=visualization_years
                 )
     
     # Model comparison plot
@@ -325,29 +338,29 @@ def create_forecast_dashboard(results_dict, target_name, save_dir=None):
             show_plot=False
         )
     
-    # Metrics comparison
-    if 'metrics' in results_dict:
-        metrics_df = pd.DataFrame(results_dict['metrics']).T
-        save_path = os.path.join(save_dir, 'metrics_comparison.png') if save_dir else None
-        
-        plot_metrics_comparison(
-            metrics_df,
-            title='Model Performance Comparison',
-            save_path=save_path,
-            show_plot=False
-        )
+    # Metrics comparison - REMOVED (user request)
+    # if 'metrics' in results_dict:
+    #     metrics_df = pd.DataFrame(results_dict['metrics']).T
+    #     save_path = os.path.join(save_dir, 'metrics_comparison.png') if save_dir else None
+    #     
+    #     plot_metrics_comparison(
+    #         metrics_df,
+    #         title='Model Performance Comparison',
+    #         save_path=save_path,
+    #         show_plot=False
+    #     )
     
-    # SARIMAX coefficients plot
-    if 'model_info' in results_dict and 'SARIMAX' in results_dict['model_info']:
-        sarimax_info = results_dict['model_info']['SARIMAX']
-        if 'exog_coefficients' in sarimax_info:
-            save_path = os.path.join(save_dir, 'sarimax_coefficients.png') if save_dir else None
-            
-            plot_exog_coefficients(
-                sarimax_info['exog_coefficients'],
-                title='SARIMAX Exogenous Variable Coefficients',
-                save_path=save_path,
-                show_plot=False
-            )
+    # SARIMAX coefficients plot - REMOVED (user request)
+    # if 'model_info' in results_dict and 'SARIMAX' in results_dict['model_info']:
+    #     sarimax_info = results_dict['model_info']['SARIMAX']
+    #     if 'exog_coefficients' in sarimax_info:
+    #         save_path = os.path.join(save_dir, 'sarimax_coefficients.png') if save_dir else None
+    #         
+    #         plot_exog_coefficients(
+    #             sarimax_info['exog_coefficients'],
+    #             title='SARIMAX Exogenous Variable Coefficients',
+    #             save_path=save_path,
+    #             show_plot=False
+    #         )
     
     print(f"Dashboard created. Plots saved to: {save_dir}")

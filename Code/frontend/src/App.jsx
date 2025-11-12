@@ -19,26 +19,10 @@ const TARGET_OPTIONS = [
   'THREE WHEELER(T)',
   'TWO WHEELER (Invalid Carriage)',
   'TWO WHEELER(NT)',
-  'TWO WHEELER(T)'
+    'TWO WHEELER(T)'
 ];
 
-const CANDIDATE_EXOGS_OPTIONS = [
-  'interest_rate',
-  'repo_rate',
-  'holiday_count',
-  'major_national_holiday',
-  'major_religious_holiday',
-  'sub_4m_rule',
-  'bs3_norms',
-  'bs4_norms',
-  'bs6_norms',
-  'fame_i',
-  'fame_ii',
-  'fame_iii',
-  'pli_scheme',
-  'vehicle_scrappage_policy',
-  'bharat_ncap',
-  // Fuel types (all 33 types)
+const FUEL_TYPES = [
   'fuel_CNG ONLY',
   'fuel_DI METHYL ETHER',
   'fuel_DIESEL',
@@ -69,7 +53,9 @@ const CANDIDATE_EXOGS_OPTIONS = [
   'fuel_SOLAR',
   'fuel_STRONG HYBRID EV',
   'fuel_Total',
-  // Vehicle classes (all 109 types)
+];
+
+const VEHICLE_CLASSES = [
   'class_Adapted Vehicle',
   'class_Agricultural Tractor',
   'class_Ambulance',
@@ -148,10 +134,55 @@ const CANDIDATE_EXOGS_OPTIONS = [
   'class_e-Rickshaw(P)',
   'class_Total',
 ];
-const MANUAL_EXOGS_OPTIONS = [
-  'interest_rate',
-  'repo_rate',
+
+const VEHICLE_CATEGORIES = [
+  'category_FOUR WHEELER (Invalid Carriage)',
+  'category_HEAVY GOODS VEHICLE',
+  'category_HEAVY MOTOR VEHICLE',
+  'category_HEAVY PASSENGER VEHICLE',
+  'category_LIGHT GOODS VEHICLE',
+  'category_LIGHT MOTOR VEHICLE',
+  'category_LIGHT PASSENGER VEHICLE',
+  'category_MEDIUM GOODS VEHICLE',
+  'category_MEDIUM MOTOR VEHICLE',
+  'category_MEDIUM PASSENGER VEHICLE',
+  'category_OTHER THAN MENTIONED ABOVE',
+  'category_THREE WHEELER (Invalid Carriage)',
+  'category_THREE WHEELER(NT)',
+  'category_THREE WHEELER(T)',
+  'category_TWO WHEELER (Invalid Carriage)',
+  'category_TWO WHEELER(NT)',
+  'category_TWO WHEELER(T)',
+  'category_Total',
 ];
+
+// Categorized exogenous variables
+const EXOG_CATEGORIES = {
+  'Economic & Policy Indicators': [
+    'interest_rate',
+    'repo_rate',
+    'holiday_count',
+    'major_national_holiday',
+    'major_religious_holiday',
+    'sub_4m_rule',
+    'bs3_norms',
+    'bs4_norms',
+    'bs6_norms',
+    'fame_i',
+    'fame_ii',
+    'fame_iii',
+    'pli_scheme',
+    'vehicle_scrappage_policy',
+    'bharat_ncap',
+  ],
+  'Fuel Types': FUEL_TYPES,
+  'Vehicle Classes': VEHICLE_CLASSES,
+  'Vehicle Categories': VEHICLE_CATEGORIES,
+};
+
+// Flatten all variables into a single array
+const CANDIDATE_EXOGS_OPTIONS = Object.values(EXOG_CATEGORIES).flat();
+const MANUAL_EXOGS_OPTIONS = CANDIDATE_EXOGS_OPTIONS;
 
 function App() {
   const [form, setForm] = useState({
@@ -164,10 +195,41 @@ function App() {
     TOP_K_EXOGS: 5,
   });
   const [loading, setLoading] = useState(false);
+  const [loadingViz, setLoadingViz] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [candidateSearchTerm, setCandidateSearchTerm] = useState('');
+  const [manualSearchTerm, setManualSearchTerm] = useState('');
+  const [visualizationYears, setVisualizationYears] = useState(2);
+  const [lastPayload, setLastPayload] = useState(null); // Store last successful payload for hot-reload
+  const [expandedCategories, setExpandedCategories] = useState({}); // Track which categories are expanded
+
+  const toggleCategory = (category) => {
+    setExpandedCategories(prev => ({
+      ...prev,
+      [category]: !prev[category]
+    }));
+  };
+
+  const selectAllInCategory = (category, variables, fieldName) => {
+    const filteredVars = variables.filter(opt => 
+      opt.toLowerCase().includes(
+        fieldName === 'CANDIDATE_EXOGS' ? candidateSearchTerm.toLowerCase() : manualSearchTerm.toLowerCase()
+      )
+    );
+    setForm(prev => ({
+      ...prev,
+      [fieldName]: [...new Set([...prev[fieldName], ...filteredVars])]
+    }));
+  };
+
+  const clearAllInCategory = (category, variables, fieldName) => {
+    setForm(prev => ({
+      ...prev,
+      [fieldName]: prev[fieldName].filter(item => !variables.includes(item))
+    }));
+  };
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -227,6 +289,7 @@ function App() {
         CANDIDATE_EXOGS: form.CANDIDATE_EXOGS,
         MANUAL_EXOGS: form.MANUAL_EXOGS,
         TOP_K_EXOGS: form.TOP_K_EXOGS,
+        VISUALIZATION_YEARS: visualizationYears,
         START_DATE: getCurrentMonthStart(), // Add current month as start date
       };
       const res = await fetch('http://127.0.0.1:5000/predict', {
@@ -254,12 +317,49 @@ function App() {
       }
       
       setResult(data);
+      setLastPayload(payload); // Store payload for hot-reload
       setCurrentImageIndex(0); // Reset to first image when new results arrive
     } catch (err) {
       console.error('Error details:', err);
       setError(`Network or server error: ${err.message}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Hot-reload visualizations with new time frame
+  const reloadVisualizations = async (newYears) => {
+    if (!lastPayload || !result) return;
+    
+    setLoadingViz(true);
+    try {
+      const payload = {
+        ...lastPayload,
+        VISUALIZATION_YEARS: newYears,
+      };
+      const res = await fetch('http://127.0.0.1:5000/predict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        console.error('Failed to reload visualizations');
+        setLoadingViz(false);
+        return;
+      }
+      const data = await res.json();
+      
+      // Update only the visualizations, keep metrics and predictions the same
+      setResult(prev => ({
+        ...prev,
+        visualization: data.visualization,
+      }));
+      setVisualizationYears(newYears);
+      setCurrentImageIndex(0);
+    } catch (err) {
+      console.error('Error reloading visualizations:', err);
+    } finally {
+      setLoadingViz(false);
     }
   };
 
@@ -332,15 +432,28 @@ function App() {
         </div>
 
         <div className="form-group">
-          <div className="checkbox-label">
-            <input
-              type="checkbox"
-              name="USE_TOP_K_EXOGS"
-              checked={form.USE_TOP_K_EXOGS}
-              onChange={handleChange}
-              style={{ width: 'auto' }}
-            />
-            <span>Use Top-K Exogenous Variables</span>
+          <label>Variable Selection Mode</label>
+          <div style={{ display: 'flex', gap: '2rem', marginTop: '0.5rem' }}>
+            <label className="radio-label">
+              <input
+                type="radio"
+                name="USE_TOP_K_EXOGS"
+                checked={form.USE_TOP_K_EXOGS === true}
+                onChange={() => setForm(prev => ({ ...prev, USE_TOP_K_EXOGS: true }))}
+                style={{ width: 'auto' }}
+              />
+              <span>Top-K Variables</span>
+            </label>
+            <label className="radio-label">
+              <input
+                type="radio"
+                name="USE_TOP_K_EXOGS"
+                checked={form.USE_TOP_K_EXOGS === false}
+                onChange={() => setForm(prev => ({ ...prev, USE_TOP_K_EXOGS: false }))}
+                style={{ width: 'auto' }}
+              />
+              <span>Manual Selection</span>
+            </label>
           </div>
         </div>
 
@@ -385,25 +498,79 @@ function App() {
                   Clear All
                 </button>
               </div>
-              <div className="checkbox-group">
-                {CANDIDATE_EXOGS_OPTIONS
-                  .filter(opt => 
-                    opt.toLowerCase().includes(candidateSearchTerm.toLowerCase())
-                  )
-                  .map(opt => (
-                    <label key={opt} className="checkbox-label">
-                      <input
-                        type="checkbox"
-                        name="CANDIDATE_EXOGS"
-                        value={opt}
-                        checked={form.CANDIDATE_EXOGS.includes(opt)}
-                        onChange={handleChange}
-                        style={{ width: 'auto' }}
-                      />
-                      {opt}
-                    </label>
-                  ))}
-              </div>
+              
+              {Object.entries(EXOG_CATEGORIES).map(([category, variables]) => {
+                const filteredVars = variables.filter(opt => 
+                  opt.toLowerCase().includes(candidateSearchTerm.toLowerCase())
+                );
+                
+                if (filteredVars.length === 0) return null;
+                
+                const isExpanded = expandedCategories[`candidate_${category}`];
+                
+                return (
+                  <div key={category} style={{ marginBottom: '1rem', border: '1px solid rgba(59, 130, 246, 0.2)', borderRadius: '4px' }}>
+                    <div 
+                      onClick={() => toggleCategory(`candidate_${category}`)}
+                      style={{ 
+                        fontSize: '0.9rem', 
+                        fontWeight: '600', 
+                        color: 'var(--primary)', 
+                        padding: '0.5rem',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        userSelect: 'none'
+                      }}
+                    >
+                      <span>{category} ({filteredVars.length})</span>
+                      <span style={{ fontSize: '1.2rem', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                        ▼
+                      </span>
+                    </div>
+                    {isExpanded && (
+                      <div style={{ padding: '0.5rem' }}>
+                        <div style={{ marginBottom: '0.5rem', display: 'flex', gap: '0.5rem' }}>
+                          <button
+                            type="button"
+                            className="select-all-btn"
+                            onClick={() => selectAllInCategory(category, filteredVars, 'CANDIDATE_EXOGS')}
+                            style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
+                          >
+                            Select All
+                          </button>
+                          <button
+                            type="button"
+                            className="select-all-btn"
+                            onClick={() => clearAllInCategory(category, variables, 'CANDIDATE_EXOGS')}
+                            style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
+                          >
+                            Clear All
+                          </button>
+                        </div>
+                        <div className="checkbox-group">
+                          {filteredVars.map(opt => (
+                            <label key={opt} className="checkbox-label">
+                              <input
+                                type="checkbox"
+                                name="CANDIDATE_EXOGS"
+                                value={opt}
+                                checked={form.CANDIDATE_EXOGS.includes(opt)}
+                                onChange={handleChange}
+                                style={{ width: 'auto' }}
+                              />
+                              {opt}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             <div className="form-group">
@@ -423,21 +590,116 @@ function App() {
         ) : (
           <div className="form-group">
             <label>Manual Exogenous Variables</label>
-            <div className="checkbox-group">
-              {MANUAL_EXOGS_OPTIONS.map(opt => (
-                <label key={opt} className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    name="MANUAL_EXOGS"
-                    value={opt}
-                    checked={form.MANUAL_EXOGS.includes(opt)}
-                    onChange={handleChange}
-                    style={{ width: 'auto' }}
-                  />
-                  {opt}
-                </label>
-              ))}
+            <input
+              type="text"
+              className="search-input"
+              placeholder="Search variables..."
+              value={manualSearchTerm}
+              onChange={(e) => setManualSearchTerm(e.target.value)}
+            />
+            <div style={{ marginBottom: '0.5rem' }}>
+              <button
+                type="button"
+                className="select-all-btn"
+                onClick={() => {
+                  const allOptions = MANUAL_EXOGS_OPTIONS.filter(opt => 
+                    opt.toLowerCase().includes(manualSearchTerm.toLowerCase())
+                  );
+                  setForm(prev => ({
+                    ...prev,
+                    MANUAL_EXOGS: allOptions
+                  }));
+                }}
+              >
+                Select All
+              </button>
+              <button
+                type="button"
+                className="select-all-btn"
+                onClick={() => {
+                  setForm(prev => ({
+                    ...prev,
+                    MANUAL_EXOGS: []
+                  }));
+                }}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                Clear All
+              </button>
             </div>
+            
+            {Object.entries(EXOG_CATEGORIES).map(([category, variables]) => {
+              const filteredVars = variables.filter(opt => 
+                opt.toLowerCase().includes(manualSearchTerm.toLowerCase())
+              );
+              
+              if (filteredVars.length === 0) return null;
+              
+              const isExpanded = expandedCategories[`manual_${category}`];
+              
+              return (
+                <div key={category} style={{ marginBottom: '1rem', border: '1px solid rgba(59, 130, 246, 0.2)', borderRadius: '4px' }}>
+                  <div 
+                    onClick={() => toggleCategory(`manual_${category}`)}
+                    style={{ 
+                      fontSize: '0.9rem', 
+                      fontWeight: '600', 
+                      color: 'var(--primary)', 
+                      padding: '0.5rem',
+                      backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      userSelect: 'none'
+                    }}
+                  >
+                    <span>{category} ({filteredVars.length})</span>
+                    <span style={{ fontSize: '1.2rem', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                      ▼
+                    </span>
+                  </div>
+                  {isExpanded && (
+                    <div style={{ padding: '0.5rem' }}>
+                      <div style={{ marginBottom: '0.5rem', display: 'flex', gap: '0.5rem' }}>
+                        <button
+                          type="button"
+                          className="select-all-btn"
+                          onClick={() => selectAllInCategory(category, filteredVars, 'MANUAL_EXOGS')}
+                          style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
+                        >
+                          Select All
+                        </button>
+                        <button
+                          type="button"
+                          className="select-all-btn"
+                          onClick={() => clearAllInCategory(category, variables, 'MANUAL_EXOGS')}
+                          style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
+                        >
+                          Clear All
+                        </button>
+                      </div>
+                      <div className="checkbox-group">
+                        {filteredVars.map(opt => (
+                          <label key={opt} className="checkbox-label">
+                            <input
+                              type="checkbox"
+                              name="MANUAL_EXOGS"
+                              value={opt}
+                              checked={form.MANUAL_EXOGS.includes(opt)}
+                              onChange={handleChange}
+                              style={{ width: 'auto' }}
+                            />
+                            {opt}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -462,70 +724,60 @@ function App() {
         <div className="results-card">
           <h3>Forecast Results</h3>
           
-          <h4>Model Performance Metrics</h4>
-          <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem' }}>
-            Based on test data up to September 2025
-          </p>
-          {result.metrics && Array.isArray(result.metrics) && (
-            <table className="metrics-table">
-              <thead>
-                <tr>
-                  <th>Model</th>
-                  <th>MAE</th>
-                  <th>RMSE</th>
-                  <th>MAPE (%)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.metrics.map((row, idx) => (
-                  <tr key={idx}>
-                    <td><strong>{row.Model}</strong></td>
-                    <td className="number-cell">{row.MAE?.toFixed(2)}</td>
-                    <td className="number-cell">{row.RMSE?.toFixed(2)}</td>
-                    <td className="number-cell">{row.MAPE?.toFixed(2)}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          
-          <div className="section-divider"></div>
-          
-          <h4>Future Forecasts</h4>
-          <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem' }}>
-            Starting from {formatDate(getCurrentMonthStart())}
-          </p>
-          {result.prediction && (
-            <div style={{ overflowX: 'auto' }}>
-              <table className="prediction-table">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    {Object.keys(result.prediction).map(model => (
-                      <th key={model}>{model}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.keys(Object.values(result.prediction)[0] || {}).map(date => (
-                    <tr key={date}>
-                      <td><strong>{date}</strong></td>
-                      {Object.keys(result.prediction).map(model => (
-                        <td key={model} className="number-cell">
-                          {result.prediction[model][date]?.toFixed(2)}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          
+          {/* 1. VISUALIZATIONS FIRST */}
           {result.visualization && Object.keys(result.visualization).length > 0 && (
             <>
               <div className="section-divider"></div>
               <h4>Forecast Visualizations</h4>
+              
+              {/* Time Frame Filter Buttons */}
+              <div style={{ 
+                display: 'flex', 
+                gap: '0.3rem', 
+                marginBottom: '1rem',
+                flexWrap: 'nowrap',
+                alignItems: 'center'
+              }}>
+                <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginRight: '0.3rem' }}>
+                  Historical Data:
+                </span>
+                {[
+                  { label: '6M', value: 0.5 },
+                  { label: '1Y', value: 1 },
+                  { label: '2Y', value: 2 },
+                  { label: '5Y', value: 5 },
+                  { label: '10Y', value: 10 },
+                  { label: '20Y', value: 20 },
+                ].map(({ label, value }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => reloadVisualizations(value)}
+                    disabled={loadingViz}
+                    style={{
+                      padding: '0.25rem 0.5rem',
+                      fontSize: '0.75rem',
+                      fontWeight: visualizationYears === value ? '600' : '400',
+                      backgroundColor: visualizationYears === value ? 'var(--primary)' : 'rgba(59, 130, 246, 0.1)',
+                      color: visualizationYears === value ? 'white' : 'var(--primary)',
+                      border: `1px solid ${visualizationYears === value ? 'var(--primary)' : 'rgba(59, 130, 246, 0.3)'}`,
+                      borderRadius: '3px',
+                      cursor: loadingViz ? 'wait' : 'pointer',
+                      transition: 'all 0.2s ease',
+                      opacity: loadingViz && visualizationYears !== value ? 0.5 : 1,
+                      minWidth: '40px',
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+                {loadingViz && (
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginLeft: '0.3rem' }}>
+                    <span className="loading-spinner" style={{ width: '12px', height: '12px' }}></span> Updating...
+                  </span>
+                )}
+              </div>
+              
               <div className="gallery-container">
                 {(() => {
                   const visualizations = Object.entries(result.visualization);
@@ -585,6 +837,72 @@ function App() {
                   );
                 })()}
               </div>
+            </>
+          )}
+          
+          {/* 2. FUTURE FORECASTS SECOND */}
+          {result.prediction && (
+            <>
+              <div className="section-divider"></div>
+              <h4>Future Forecasts</h4>
+              <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+                Starting from {formatDate(getCurrentMonthStart())}
+              </p>
+              <div style={{ overflowX: 'auto' }}>
+                <table className="prediction-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      {Object.keys(result.prediction).map(model => (
+                        <th key={model}>{model}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.keys(Object.values(result.prediction)[0] || {}).map(date => (
+                      <tr key={date}>
+                        <td><strong>{date}</strong></td>
+                        {Object.keys(result.prediction).map(model => (
+                          <td key={model} className="number-cell">
+                            {result.prediction[model][date]?.toFixed(2)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+          
+          {/* 3. MODEL PERFORMANCE METRICS LAST */}
+          {result.metrics && Array.isArray(result.metrics) && (
+            <>
+              <div className="section-divider"></div>
+              <h4>Model Performance Metrics</h4>
+              <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+                Based on test data up to September 2025
+              </p>
+              <table className="metrics-table">
+                <thead>
+                  <tr>
+                    <th>Model</th>
+                    <th>MAE</th>
+                    <th>RMSE</th>
+                    <th>MAPE (%)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.metrics.map((row, idx) => (
+                    <tr key={idx}>
+                      <td><strong>{row.Model}</strong></td>
+                      <td className="number-cell">{row.MAE?.toFixed(2)}</td>
+                      <td className="number-cell">{row.RMSE?.toFixed(2)}</td>
+                      <td className="number-cell">{row.MAPE?.toFixed(2)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </>
           )}
         </div>

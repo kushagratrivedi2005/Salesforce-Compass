@@ -40,6 +40,7 @@ def predict():
     ])
     manual_exogs = data.get('MANUAL_EXOGS', ['interest_rate', 'repo_rate'])
     top_k_exogs = data.get('TOP_K_EXOGS', 5)
+    visualization_years = data.get('VISUALIZATION_YEARS', 2)
     start_date = data.get('START_DATE', None)  # Get start date from request
 
     # --- Create a temporary config file ---
@@ -66,6 +67,9 @@ USE_TOP_K_EXOGS = {use_top_k_exogs}
 CANDIDATE_EXOGS = {json.dumps(candidate_exogs)}
 MANUAL_EXOGS = {json.dumps(manual_exogs)}
 TOP_K_EXOGS = {top_k_exogs}
+
+# ------------------------- Visualization Configuration -------------------------
+VISUALIZATION_YEARS = {visualization_years}
 
 # ------------------------- Model Parameters (from original config) -------------------------
 ARIMA_PARAMS = {{
