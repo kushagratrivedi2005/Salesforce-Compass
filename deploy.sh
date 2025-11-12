@@ -1,0 +1,71 @@
+#!/bin/bash
+
+echo "🚀 Vercel Deployment Script for Salesforce-Compass"
+echo "=================================================="
+echo ""
+
+# Check if vercel CLI is installed
+if ! command -v vercel &> /dev/null; then
+    echo "❌ Vercel CLI not found. Installing..."
+    npm install -g vercel
+fi
+
+echo "📦 Step 1: Installing frontend dependencies..."
+cd Code/frontend
+npm install
+
+echo ""
+echo "🔨 Step 2: Building frontend..."
+npm run build
+
+echo ""
+echo "✅ Build complete!"
+echo ""
+echo "📋 Deployment Options:"
+echo "====================="
+echo ""
+echo "OPTION A: Deploy Frontend Only to Vercel (Recommended)"
+echo "-------------------------------------------------------"
+echo "1. Deploy frontend:"
+echo "   cd Code/frontend && vercel"
+echo ""
+echo "2. For production:"
+echo "   cd Code/frontend && vercel --prod"
+echo ""
+echo "⚠️  NOTE: You'll need to deploy the backend separately (see below)"
+echo ""
+echo ""
+echo "OPTION B: Deploy Backend to Render/Railway"
+echo "-------------------------------------------"
+echo "Backend hosting services are better for Python Flask apps:"
+echo ""
+echo "Render.com (Recommended):"
+echo "  1. Go to render.com and sign up"
+echo "  2. New > Web Service"
+echo "  3. Connect this GitHub repo"
+echo "  4. Settings:"
+echo "     - Build Command: pip install -r requirements.txt"
+echo "     - Start Command: gunicorn Code.app:app"
+echo "     - Root Directory: /"
+echo "  5. Copy the deployed URL"
+echo ""
+echo "Railway.app:"
+echo "  1. Go to railway.app and sign up"
+echo "  2. New Project > Deploy from GitHub"
+echo "  3. Select this repo"
+echo "  4. Add start command: gunicorn Code.app:app"
+echo "  5. Copy the deployed URL"
+echo ""
+echo ""
+echo "📝 Step 3: Update Frontend API URL"
+echo "===================================="
+echo "After deploying the backend, update the API URL in:"
+echo "  Code/frontend/src/App.jsx"
+echo ""
+echo "Change line ~272:"
+echo "  From: fetch('http://127.0.0.1:5000/predict', ...)"
+echo "  To:   fetch('https://your-backend-url.com/predict', ...)"
+echo ""
+echo "Then rebuild and redeploy frontend."
+echo ""
+echo "🎉 Done! Your app will be live after both deployments."
